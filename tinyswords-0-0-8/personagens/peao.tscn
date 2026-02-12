@@ -1,7 +1,6 @@
-[gd_scene load_steps=21 format=3 uid="uid://dovbpdtr5vkcl"]
+[gd_scene format=3 uid="uid://dovbpdtr5vkcl"]
 
 [ext_resource type="PackedScene" uid="uid://b1v8ewxjyoa1p" path="res://personagens/personagem_base.tscn" id="1_sqm0i"]
-[ext_resource type="AudioStream" uid="uid://dnou2osbau3v8" path="res://Audio/SFX_Wood_Chop.tres" id="2_4joxn"]
 [ext_resource type="Texture2D" uid="uid://b8u8d2og52kta" path="res://personagens/Pawn_Interact_Hammer.png" id="2_556l4"]
 [ext_resource type="Texture2D" uid="uid://bmjxahdbn0ffr" path="res://personagens/Pawn_Idle.png" id="2_y2huk"]
 [ext_resource type="Texture2D" uid="uid://c1t4ypen84ehi" path="res://personagens/Pawn_Interact_Axe.png" id="3_i4w6u"]
@@ -377,10 +376,8 @@ _data = {
 [sub_resource type="CircleShape2D" id="CircleShape2D_556l4"]
 radius = 44.011364
 
-[node name="peao" groups=["peao"] instance=ExtResource("1_sqm0i")]
+[node name="peao" unique_id=1798615513 groups=["peao"] instance=ExtResource("1_sqm0i")]
 safe_margin = 1.0
-sfx_wood = ExtResource("2_4joxn")
-sfx_stone = ExtResource("9_4joxn")
 
 [node name="Textura" parent="." index="0"]
 position = Vector2(0, -30)
@@ -393,24 +390,22 @@ scale = Vector2(1, 1.0906487)
 shape = SubResource("CapsuleShape2D_y2huk")
 
 [node name="AnimationPlayer" parent="." index="2"]
-libraries = {
-&"": SubResource("AnimationLibrary_556l4")
-}
+libraries/ = SubResource("AnimationLibrary_556l4")
 speed_scale = 1.2
 
-[node name="AreaAttack" type="Area2D" parent="." index="4"]
+[node name="AreaAttack" type="Area2D" parent="." index="4" unique_id=1523640192]
 collision_layer = 0
 collision_mask = 7
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="AreaAttack" index="0"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="AreaAttack" index="0" unique_id=1248648047]
 position = Vector2(23, -30)
 shape = SubResource("CircleShape2D_556l4")
 disabled = true
 
-[node name="StepAudio" type="AudioStreamPlayer" parent="." index="5"]
+[node name="StepAudio" type="AudioStreamPlayer" parent="." index="5" unique_id=1486292053]
 stream = ExtResource("8_ijla5")
 
-[node name="FXAudio" type="AudioStreamPlayer" parent="." index="6"]
+[node name="FXAudio" type="AudioStreamPlayer" parent="." index="6" unique_id=352413227]
 stream = ExtResource("9_4joxn")
 
 [connection signal="body_entered" from="AreaAttack" to="." method="_on_area_attack_body_entered"]

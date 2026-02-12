@@ -1,4 +1,4 @@
-[gd_resource type="AudioStreamRandomizer" load_steps=5 format=3 uid="uid://6idg7p6i4qcf"]
+[gd_resource type="AudioStreamRandomizer" format=3 uid="uid://6idg7p6i4qcf"]
 
 [ext_resource type="AudioStream" uid="uid://cdysr4mu1yrr1" path="res://Audio/drop_001.ogg" id="1_mspvc"]
 [ext_resource type="AudioStream" uid="uid://dabtbol7up83b" path="res://Audio/drop_002.ogg" id="2_c3gei"]

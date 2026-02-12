@@ -1,0 +1,40 @@
+[gd_scene format=3 uid="uid://cwrhw06guqefk"]
+
+[ext_resource type="Texture2D" uid="uid://b47a4j4n7mucn" path="res://Interface/Banners/Banner_Slots.png" id="1_b574w"]
+[ext_resource type="Script" uid="uid://cvrmfbkx660ec" path="res://Interface/inventory_slot.gd" id="2_ln8hb"]
+[ext_resource type="FontFile" uid="uid://ckt0umhc75sre" path="res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf" id="3_ln8hb"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_146tp"]
+font = ExtResource("3_ln8hb")
+font_size = 24
+outline_size = 4
+outline_color = Color(0, 0, 0, 1)
+
+[node name="InventorySlot" type="TextureRect" unique_id=1760444441]
+custom_minimum_size = Vector2(96, 96)
+offset_right = 40.0
+offset_bottom = 40.0
+texture = ExtResource("1_b574w")
+script = ExtResource("2_ln8hb")
+
+[node name="Icon" type="TextureRect" parent="." unique_id=1886166005]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Amount" type="Label" parent="." unique_id=463054388]
+layout_mode = 1
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -40.0
+offset_top = -23.0
+grow_horizontal = 0
+grow_vertical = 0
+label_settings = SubResource("LabelSettings_146tp")
+horizontal_alignment = 2
