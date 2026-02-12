@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://bitcn8g41e8s2"]
+[gd_scene format=3 uid="uid://bitcn8g41e8s2"]
 
 [ext_resource type="Texture2D" uid="uid://d0d1fn1y65077" path="res://Terrain/Assets/Tilemap_color1.png" id="1_vgdxw"]
 [ext_resource type="Texture2D" uid="uid://ck46tjjhw2ihy" path="res://Terrain/Assets/Tilemap_color4.png" id="2_3fgrf"]
@@ -246,25 +246,25 @@ texture = ExtResource("5_3fgrf")
 tile_size = Vector2i(32, 32)
 sources/0 = SubResource("TileSetAtlasSource_3fgrf")
 
-[node name="Terrain" type="Node2D"]
+[node name="Terrain" type="Node2D" unique_id=1604914700]
 
-[node name="water" type="TileMapLayer" parent="."]
+[node name="water" type="TileMapLayer" parent="." unique_id=1235627164]
 tile_set = SubResource("TileSet_0j3ho")
 
-[node name="water_foam" type="TileMapLayer" parent="."]
+[node name="water_foam" type="TileMapLayer" parent="." unique_id=1358628534]
 tile_set = SubResource("TileSet_0j3ho")
 
-[node name="Layer_Ground" type="TileMapLayer" parent="."]
+[node name="Layer_Ground" type="TileMapLayer" parent="." unique_id=445136719]
 tile_set = SubResource("TileSet_0j3ho")
 
-[node name="Shadow" type="TileMapLayer" parent="."]
+[node name="Shadow" type="TileMapLayer" parent="." unique_id=1956468944]
 tile_set = SubResource("TileSet_0j3ho")
 
-[node name="Layer_Ground2" type="TileMapLayer" parent="."]
+[node name="Layer_Ground2" type="TileMapLayer" parent="." unique_id=663306770]
 tile_set = SubResource("TileSet_0j3ho")
 
-[node name="Shadow2" type="TileMapLayer" parent="."]
+[node name="Shadow2" type="TileMapLayer" parent="." unique_id=109515523]
 tile_set = SubResource("TileSet_0j3ho")
 
-[node name="SpawnLayer" type="TileMapLayer" parent="."]
+[node name="SpawnLayer" type="TileMapLayer" parent="." unique_id=837013576]
 tile_set = SubResource("TileSet_vp0y8")

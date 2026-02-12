@@ -1,8 +1,7 @@
-[gd_scene load_steps=18 format=3 uid="uid://b8rxid160g3q7"]
+[gd_scene format=3 uid="uid://b8rxid160g3q7"]
 
 [ext_resource type="PackedScene" uid="uid://4l0hpe831sm5" path="res://Base_Object/object_base.tscn" id="1_2d7ov"]
 [ext_resource type="Texture2D" uid="uid://cbk2rxbb4jgmq" path="res://Base_Object/Trees/Tree_1.png" id="2_1cw7b"]
-[ext_resource type="Texture2D" uid="uid://c81t11rebw348" path="res://Base_Object/Wood_Resource.png" id="2_kbg6j"]
 [ext_resource type="PackedScene" uid="uid://cd78fxl4a4n33" path="res://Base_Object/PhysicItem.tscn" id="2_m4jyd"]
 [ext_resource type="Texture2D" uid="uid://crmwttvibyubk" path="res://Base_Object/Trees/Tree_2.png" id="3_xvwte"]
 [ext_resource type="Texture2D" uid="uid://bpur3dx7inj6s" path="res://Base_Object/Trees/Tree_3.png" id="4_20ddq"]
@@ -405,7 +404,7 @@ _data = {
 &"Tree_4": SubResource("Animation_n0acx")
 }
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_20ddq"]
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_kbg6j"]
 resource_local_to_scene = true
 radius = 6.0
 height = 18.0
@@ -448,30 +447,25 @@ _data = {
 &"hit": SubResource("Animation_kbg6j")
 }
 
-[node name="Tree" instance=ExtResource("1_2d7ov")]
+[node name="Tree" unique_id=1384466650 instance=ExtResource("1_2d7ov")]
 y_sort_enabled = true
 collision_layer = 4
 collision_mask = 0
 drop_item_scene = ExtResource("2_m4jyd")
-drop_item_texture = ExtResource("2_kbg6j")
 
-[node name="Sprite2D" parent="." index="0"]
+[node name="Sprite2D" parent="." index="0" unique_id=1868589021]
 position = Vector2(0, 1)
 texture = ExtResource("2_1cw7b")
 offset = Vector2(0, -100)
 hframes = 8
 
-[node name="AnimationPlayer" parent="." index="1"]
-libraries = {
-&"": SubResource("AnimationLibrary_jpx8y")
-}
+[node name="AnimationPlayer" parent="." index="1" unique_id=2001566980]
+libraries/ = SubResource("AnimationLibrary_jpx8y")
 
-[node name="CollisionShape2D" parent="." index="2"]
+[node name="CollisionShape2D" parent="." index="2" unique_id=2129389472]
 position = Vector2(0, 1)
 rotation = 1.5707964
-shape = SubResource("CapsuleShape2D_20ddq")
+shape = SubResource("CapsuleShape2D_kbg6j")
 
-[node name="AuxAnimationPlayer" type="AnimationPlayer" parent="." index="3"]
-libraries = {
-&"": SubResource("AnimationLibrary_gtqyj")
-}
+[node name="AuxAnimationPlayer" type="AnimationPlayer" parent="." index="3" unique_id=2116696675]
+libraries/ = SubResource("AnimationLibrary_gtqyj")

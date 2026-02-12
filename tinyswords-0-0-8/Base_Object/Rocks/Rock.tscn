@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://pdogh61ep67t"]
+[gd_scene format=3 uid="uid://pdogh61ep67t"]
 
 [ext_resource type="PackedScene" uid="uid://4l0hpe831sm5" path="res://Base_Object/object_base.tscn" id="1_jdsy1"]
 [ext_resource type="PackedScene" uid="uid://cd78fxl4a4n33" path="res://Base_Object/PhysicItem.tscn" id="2_3kfw8"]
@@ -219,7 +219,7 @@ _data = {
 &"Rock_4": SubResource("Animation_0fqq5")
 }
 
-[sub_resource type="CircleShape2D" id="CircleShape2D_grkxo"]
+[sub_resource type="CircleShape2D" id="CircleShape2D_3kfw8"]
 resource_local_to_scene = true
 radius = 13.038404
 
@@ -262,26 +262,22 @@ _data = {
 &"hit": SubResource("Animation_fs8p7")
 }
 
-[node name="Rock" instance=ExtResource("1_jdsy1")]
+[node name="Rock" unique_id=1038814277 instance=ExtResource("1_jdsy1")]
 collision_layer = 4
 collision_mask = 0
 object_type = "Rock_"
-type = "Rock"
+type = "rock"
 drop_item_scene = ExtResource("2_3kfw8")
 
-[node name="Sprite2D" parent="." index="0"]
+[node name="Sprite2D" parent="." index="0" unique_id=1868589021]
 texture = ExtResource("2_eikrv")
 
-[node name="AnimationPlayer" parent="." index="1"]
-libraries = {
-&"": SubResource("AnimationLibrary_40rgx")
-}
+[node name="AnimationPlayer" parent="." index="1" unique_id=2001566980]
+libraries/ = SubResource("AnimationLibrary_40rgx")
 
-[node name="CollisionShape2D" parent="." index="2"]
+[node name="CollisionShape2D" parent="." index="2" unique_id=2129389472]
 position = Vector2(0, 5)
-shape = SubResource("CircleShape2D_grkxo")
+shape = SubResource("CircleShape2D_3kfw8")
 
-[node name="AuxAnimationPlayer" type="AnimationPlayer" parent="." index="3"]
-libraries = {
-&"": SubResource("AnimationLibrary_gtqyj")
-}
+[node name="AuxAnimationPlayer" type="AnimationPlayer" parent="." index="3" unique_id=511469732]
+libraries/ = SubResource("AnimationLibrary_gtqyj")

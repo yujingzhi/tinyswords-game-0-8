@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://b1v8ewxjyoa1p"]
+[gd_scene format=3 uid="uid://b1v8ewxjyoa1p"]
 
 [ext_resource type="Script" uid="uid://bqsy13yr0nuu6" path="res://personagens/personagem_base.gd" id="1_fahbu"]
 [ext_resource type="AudioStream" uid="uid://dnou2osbau3v8" path="res://Audio/SFX_Wood_Chop.tres" id="2_n37a5"]
@@ -7,7 +7,7 @@
 [ext_resource type="AudioStream" uid="uid://cx8vw11h3k880" path="res://Audio/SFX_Weapon_Sharp.tres" id="5_3qj3d"]
 [ext_resource type="AudioStream" uid="uid://cgouleaf0dt0s" path="res://Audio/SFX_Weapon_Hand.tres" id="6_usjsn"]
 
-[node name="peao" type="CharacterBody2D" node_paths=PackedStringArray("_textura", "_animador")]
+[node name="peao" type="CharacterBody2D" unique_id=576773321 node_paths=PackedStringArray("_textura", "_animador")]
 script = ExtResource("1_fahbu")
 _textura = NodePath("Textura")
 _animador = NodePath("AnimationPlayer")
@@ -17,10 +17,10 @@ sfx_heavy = ExtResource("4_s6nxa")
 sfx_sharp = ExtResource("5_3qj3d")
 sfx_hand = ExtResource("6_usjsn")
 
-[node name="Textura" type="Sprite2D" parent="."]
+[node name="Textura" type="Sprite2D" parent="." unique_id=1736314301]
 
-[node name="Colisao" type="CollisionShape2D" parent="."]
+[node name="Colisao" type="CollisionShape2D" parent="." unique_id=1595613900]
 
-[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1823335232]
 
-[node name="Camera2D" type="Camera2D" parent="."]
+[node name="Camera2D" type="Camera2D" parent="." unique_id=160000158]

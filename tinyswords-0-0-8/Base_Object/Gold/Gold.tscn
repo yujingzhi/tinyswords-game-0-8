@@ -1,9 +1,8 @@
-[gd_scene load_steps=22 format=3 uid="uid://bppsedxoiws8d"]
+[gd_scene format=3 uid="uid://bppsedxoiws8d"]
 
 [ext_resource type="PackedScene" uid="uid://4l0hpe831sm5" path="res://Base_Object/object_base.tscn" id="1_w5518"]
 [ext_resource type="Texture2D" uid="uid://dwgh58puu3fte" path="res://Base_Object/Gold/Gold_1.png" id="2_1dafn"]
 [ext_resource type="PackedScene" uid="uid://cd78fxl4a4n33" path="res://Base_Object/PhysicItem.tscn" id="2_88wgy"]
-[ext_resource type="Texture2D" uid="uid://bkkj354l87ekx" path="res://Base_Object/Gold_Resource.png" id="2_rf140"]
 [ext_resource type="Texture2D" uid="uid://1po80cttpjel" path="res://Base_Object/Gold/Gold_2.png" id="3_5sm0j"]
 [ext_resource type="Texture2D" uid="uid://dkwgnm5n3hjpw" path="res://Base_Object/Gold/Gold_3.png" id="4_rf140"]
 [ext_resource type="Texture2D" uid="uid://mwfl51qqfrf8" path="res://Base_Object/Gold/Gold_4.png" id="5_88wgy"]
@@ -624,7 +623,7 @@ _data = {
 &"RESET": SubResource("Animation_p43lm")
 }
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_5sm0j"]
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_rf140"]
 resource_local_to_scene = true
 radius = 13.0
 height = 26.0
@@ -667,30 +666,25 @@ _data = {
 &"hit": SubResource("Animation_fs8p7")
 }
 
-[node name="Gold" instance=ExtResource("1_w5518")]
+[node name="Gold" unique_id=1028945798 instance=ExtResource("1_w5518")]
 collision_layer = 4
 collision_mask = 0
 object_type = "Gold_"
 variation_count = 6
-type = "Gold"
+type = "gold"
 drop_item_scene = ExtResource("2_88wgy")
-drop_item_texture = ExtResource("2_rf140")
 
-[node name="Sprite2D" parent="." index="0"]
+[node name="Sprite2D" parent="." index="0" unique_id=1868589021]
 texture = ExtResource("2_1dafn")
 hframes = 6
 
-[node name="AnimationPlayer" parent="." index="1"]
-libraries = {
-&"": SubResource("AnimationLibrary_fl3ui")
-}
+[node name="AnimationPlayer" parent="." index="1" unique_id=2001566980]
+libraries/ = SubResource("AnimationLibrary_fl3ui")
 
-[node name="CollisionShape2D" parent="." index="2"]
+[node name="CollisionShape2D" parent="." index="2" unique_id=2129389472]
 y_sort_enabled = true
 rotation = 1.5707964
-shape = SubResource("CapsuleShape2D_5sm0j")
+shape = SubResource("CapsuleShape2D_rf140")
 
-[node name="AuxAnimationPlayer" type="AnimationPlayer" parent="." index="3"]
-libraries = {
-&"": SubResource("AnimationLibrary_gtqyj")
-}
+[node name="AuxAnimationPlayer" type="AnimationPlayer" parent="." index="3" unique_id=1729801555]
+libraries/ = SubResource("AnimationLibrary_gtqyj")

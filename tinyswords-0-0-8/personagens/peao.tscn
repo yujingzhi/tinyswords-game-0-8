@@ -377,19 +377,21 @@ _data = {
 radius = 44.011364
 
 [node name="peao" unique_id=1798615513 groups=["peao"] instance=ExtResource("1_sqm0i")]
+y_sort_enabled = true
+collision_mask = 7
 safe_margin = 1.0
 
-[node name="Textura" parent="." index="0"]
+[node name="Textura" parent="." index="0" unique_id=1736314301]
 position = Vector2(0, -30)
 texture = ExtResource("2_556l4")
 hframes = 6
 
-[node name="Colisao" parent="." index="1"]
+[node name="Colisao" parent="." index="1" unique_id=1595613900]
 rotation = 1.5707964
 scale = Vector2(1, 1.0906487)
 shape = SubResource("CapsuleShape2D_y2huk")
 
-[node name="AnimationPlayer" parent="." index="2"]
+[node name="AnimationPlayer" parent="." index="2" unique_id=1823335232]
 libraries/ = SubResource("AnimationLibrary_556l4")
 speed_scale = 1.2
 
