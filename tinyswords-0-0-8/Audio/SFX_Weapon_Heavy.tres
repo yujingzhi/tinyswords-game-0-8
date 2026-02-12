@@ -1,0 +1,15 @@
+[gd_resource type="AudioStreamRandomizer" load_steps=6 format=3 uid="uid://brplwy3rigo13"]
+
+[ext_resource type="AudioStream" uid="uid://fqdhtrkvxd2q" path="res://Audio/impactMetal_heavy_000.ogg" id="1_67trf"]
+[ext_resource type="AudioStream" uid="uid://dcr4dj2irmah8" path="res://Audio/impactMetal_heavy_001.ogg" id="2_rjuq7"]
+[ext_resource type="AudioStream" uid="uid://dtgon3fxsamc7" path="res://Audio/impactMetal_heavy_002.ogg" id="3_d2bfa"]
+[ext_resource type="AudioStream" uid="uid://cndfuqn2qx0km" path="res://Audio/impactMetal_heavy_003.ogg" id="4_mj6jx"]
+[ext_resource type="AudioStream" uid="uid://byiqpjy25l4su" path="res://Audio/impactMetal_heavy_004.ogg" id="5_wefp7"]
+
+[resource]
+streams_count = 5
+stream_0/stream = ExtResource("1_67trf")
+stream_1/stream = ExtResource("2_rjuq7")
+stream_2/stream = ExtResource("3_d2bfa")
+stream_3/stream = ExtResource("4_mj6jx")
+stream_4/stream = ExtResource("5_wefp7")

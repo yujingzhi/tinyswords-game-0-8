@@ -1,0 +1,16 @@
+[gd_resource type="AudioStreamRandomizer" load_steps=6 format=3 uid="uid://cx8vw11h3k880"]
+
+[ext_resource type="AudioStream" uid="uid://cfwklllqydxrq" path="res://Audio/impactMetal_light_000.ogg" id="2_p03ue"]
+[ext_resource type="AudioStream" uid="uid://bd6x1q6cgeyb4" path="res://Audio/impactMetal_light_001.ogg" id="3_1sf5o"]
+[ext_resource type="AudioStream" uid="uid://j7dvuy7th12v" path="res://Audio/impactMetal_light_002.ogg" id="4_3bxqs"]
+[ext_resource type="AudioStream" uid="uid://dvod1wmfh3dcr" path="res://Audio/impactMetal_light_003.ogg" id="5_kxro4"]
+[ext_resource type="AudioStream" uid="uid://cmdub58cb0dkd" path="res://Audio/impactMetal_light_004.ogg" id="6_23pc3"]
+
+[resource]
+random_pitch = 1.2
+streams_count = 5
+stream_0/stream = ExtResource("2_p03ue")
+stream_1/stream = ExtResource("3_1sf5o")
+stream_2/stream = ExtResource("4_3bxqs")
+stream_3/stream = ExtResource("5_kxro4")
+stream_4/stream = ExtResource("6_23pc3")
