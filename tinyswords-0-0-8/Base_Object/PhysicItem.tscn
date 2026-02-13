@@ -4,12 +4,16 @@
 [ext_resource type="AudioStream" uid="uid://6idg7p6i4qcf" path="res://Audio/SFX_Item_Drop.tres" id="2_qgsat"]
 [ext_resource type="AudioStream" uid="uid://sig4t7t5eyr3" path="res://Audio/SFX_Item_Pickup.tres" id="3_ddrya"]
 
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_qgsat"]
+bounce = 0.5
+
 [sub_resource type="CircleShape2D" id="CircleShape2D_8yhwc"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_juqr8"]
 radius = 16.0
 
 [node name="RealDropItem" type="RigidBody2D" unique_id=753630725]
+physics_material_override = SubResource("PhysicsMaterial_qgsat")
 gravity_scale = 0.0
 linear_damp = 2.075
 script = ExtResource("1_juqr8")

@@ -1,16 +1,17 @@
 [gd_scene format=3 uid="uid://b1v8ewxjyoa1p"]
 
-[ext_resource type="Script" uid="uid://bqsy13yr0nuu6" path="res://personagens/personagem_base.gd" id="1_fahbu"]
+[ext_resource type="Script" uid="uid://bqsy13yr0nuu6" path="res://CharacterBase/character_base.gd" id="1_fahbu"]
 [ext_resource type="AudioStream" uid="uid://dnou2osbau3v8" path="res://Audio/SFX_Wood_Chop.tres" id="2_n37a5"]
 [ext_resource type="AudioStream" uid="uid://dh12pywne8kri" path="res://Audio/SFX_Stone_Mine.tres" id="3_f6dve"]
 [ext_resource type="AudioStream" uid="uid://brplwy3rigo13" path="res://Audio/SFX_Weapon_Heavy.tres" id="4_s6nxa"]
 [ext_resource type="AudioStream" uid="uid://cx8vw11h3k880" path="res://Audio/SFX_Weapon_Sharp.tres" id="5_3qj3d"]
 [ext_resource type="AudioStream" uid="uid://cgouleaf0dt0s" path="res://Audio/SFX_Weapon_Hand.tres" id="6_usjsn"]
 
-[node name="peao" type="CharacterBody2D" unique_id=576773321 node_paths=PackedStringArray("_textura", "_animador")]
+[node name="CharacterBase" type="CharacterBody2D" unique_id=576773321 node_paths=PackedStringArray("sprite", "animation_player")]
 script = ExtResource("1_fahbu")
-_textura = NodePath("Textura")
-_animador = NodePath("AnimationPlayer")
+sprite = NodePath("Textura")
+animation_player = NodePath("AnimationPlayer")
+texture_folder_path = "res://CharacterBase"
 sfx_wood = ExtResource("2_n37a5")
 sfx_stone = ExtResource("3_f6dve")
 sfx_heavy = ExtResource("4_s6nxa")
@@ -20,6 +21,7 @@ sfx_hand = ExtResource("6_usjsn")
 [node name="Textura" type="Sprite2D" parent="." unique_id=1736314301]
 
 [node name="Colisao" type="CollisionShape2D" parent="." unique_id=1595613900]
+rotation = 1.5707964
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1823335232]
 

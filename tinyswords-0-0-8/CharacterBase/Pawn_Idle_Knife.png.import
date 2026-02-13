@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b2wi31sj4d85p"
-path="res://.godot/imported/Pawn_Run_Axe.png-a3b30afcc75a779dc975e77172ead0c2.ctex"
+uid="uid://da2jukjr0o4vc"
+path="res://.godot/imported/Pawn_Idle_Knife.png-124defe1e45c9432629347686005e42f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://personagens/Pawn_Run_Axe.png"
-dest_files=["res://.godot/imported/Pawn_Run_Axe.png-a3b30afcc75a779dc975e77172ead0c2.ctex"]
+source_file="res://CharacterBase/Pawn_Idle_Knife.png"
+dest_files=["res://.godot/imported/Pawn_Idle_Knife.png-124defe1e45c9432629347686005e42f.ctex"]
 
 [params]
 

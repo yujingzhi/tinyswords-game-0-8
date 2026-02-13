@@ -4,6 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://dwgh58puu3fte" path="res://Base_Object/Gold/Gold_1.png" id="2_1dafn"]
 [ext_resource type="PackedScene" uid="uid://cd78fxl4a4n33" path="res://Base_Object/PhysicItem.tscn" id="2_88wgy"]
 [ext_resource type="Texture2D" uid="uid://1po80cttpjel" path="res://Base_Object/Gold/Gold_2.png" id="3_5sm0j"]
+[ext_resource type="Texture2D" uid="uid://bkkj354l87ekx" path="res://Base_Object/Gold_Resource.png" id="3_88wgy"]
 [ext_resource type="Texture2D" uid="uid://dkwgnm5n3hjpw" path="res://Base_Object/Gold/Gold_3.png" id="4_rf140"]
 [ext_resource type="Texture2D" uid="uid://mwfl51qqfrf8" path="res://Base_Object/Gold/Gold_4.png" id="5_88wgy"]
 [ext_resource type="Texture2D" uid="uid://b48y0ckohqftr" path="res://Base_Object/Gold/Gold_5.png" id="6_46qh8"]
@@ -667,12 +668,14 @@ _data = {
 }
 
 [node name="Gold" unique_id=1028945798 instance=ExtResource("1_w5518")]
+y_sort_enabled = true
 collision_layer = 4
 collision_mask = 0
 object_type = "Gold_"
 variation_count = 6
 type = "gold"
 drop_item_scene = ExtResource("2_88wgy")
+drop_item_texture = ExtResource("3_88wgy")
 
 [node name="Sprite2D" parent="." index="0" unique_id=1868589021]
 texture = ExtResource("2_1dafn")

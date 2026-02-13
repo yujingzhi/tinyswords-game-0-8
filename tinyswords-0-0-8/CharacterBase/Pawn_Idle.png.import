@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d3h88ujfx2ouh"
-path="res://.godot/imported/Pawn_Interact_Knife.png-c33b421ef08a01eae94740d09be3b44d.ctex"
+uid="uid://bmjxahdbn0ffr"
+path="res://.godot/imported/Pawn_Idle.png-5b655e9657de267df48e6cd0674165c0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://personagens/Pawn_Interact_Knife.png"
-dest_files=["res://.godot/imported/Pawn_Interact_Knife.png-c33b421ef08a01eae94740d09be3b44d.ctex"]
+source_file="res://CharacterBase/Pawn_Idle.png"
+dest_files=["res://.godot/imported/Pawn_Idle.png-5b655e9657de267df48e6cd0674165c0.ctex"]
 
 [params]
 

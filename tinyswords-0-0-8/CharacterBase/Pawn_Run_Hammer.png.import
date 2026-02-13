@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c1t4ypen84ehi"
-path="res://.godot/imported/Pawn_Interact_Axe.png-468fa28c800819b8317759888162e9d4.ctex"
+uid="uid://d12n0mn3w5102"
+path="res://.godot/imported/Pawn_Run_Hammer.png-b68cafb39b2ae55f26adc569089721d9.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://personagens/Pawn_Interact_Axe.png"
-dest_files=["res://.godot/imported/Pawn_Interact_Axe.png-468fa28c800819b8317759888162e9d4.ctex"]
+source_file="res://CharacterBase/Pawn_Run_Hammer.png"
+dest_files=["res://.godot/imported/Pawn_Run_Hammer.png-b68cafb39b2ae55f26adc569089721d9.ctex"]
 
 [params]
 

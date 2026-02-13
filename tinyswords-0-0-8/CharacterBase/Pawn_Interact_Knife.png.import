@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://d12n0mn3w5102"
-path="res://.godot/imported/Pawn_Run_Hammer.png-66e5910d1d0845cb10b5322707b2b396.ctex"
+uid="uid://d3h88ujfx2ouh"
+path="res://.godot/imported/Pawn_Interact_Knife.png-110dfc0aa4d4d62d31b900bcc2b72dc4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://personagens/Pawn_Run_Hammer.png"
-dest_files=["res://.godot/imported/Pawn_Run_Hammer.png-66e5910d1d0845cb10b5322707b2b396.ctex"]
+source_file="res://CharacterBase/Pawn_Interact_Knife.png"
+dest_files=["res://.godot/imported/Pawn_Interact_Knife.png-110dfc0aa4d4d62d31b900bcc2b72dc4.ctex"]
 
 [params]
 

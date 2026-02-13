@@ -3,6 +3,7 @@
 [ext_resource type="PackedScene" uid="uid://4l0hpe831sm5" path="res://Base_Object/object_base.tscn" id="1_2d7ov"]
 [ext_resource type="Texture2D" uid="uid://cbk2rxbb4jgmq" path="res://Base_Object/Trees/Tree_1.png" id="2_1cw7b"]
 [ext_resource type="PackedScene" uid="uid://cd78fxl4a4n33" path="res://Base_Object/PhysicItem.tscn" id="2_m4jyd"]
+[ext_resource type="Texture2D" uid="uid://c81t11rebw348" path="res://Base_Object/Wood_Resource.png" id="3_m4jyd"]
 [ext_resource type="Texture2D" uid="uid://crmwttvibyubk" path="res://Base_Object/Trees/Tree_2.png" id="3_xvwte"]
 [ext_resource type="Texture2D" uid="uid://bpur3dx7inj6s" path="res://Base_Object/Trees/Tree_3.png" id="4_20ddq"]
 [ext_resource type="Texture2D" uid="uid://4l1rywops1b0" path="res://Base_Object/Trees/Tree_4.png" id="5_jpx8y"]
@@ -404,7 +405,7 @@ _data = {
 &"Tree_4": SubResource("Animation_n0acx")
 }
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_kbg6j"]
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_lx5dm"]
 resource_local_to_scene = true
 radius = 6.0
 height = 18.0
@@ -452,6 +453,7 @@ y_sort_enabled = true
 collision_layer = 4
 collision_mask = 0
 drop_item_scene = ExtResource("2_m4jyd")
+drop_item_texture = ExtResource("3_m4jyd")
 
 [node name="Sprite2D" parent="." index="0" unique_id=1868589021]
 position = Vector2(0, 1)
@@ -465,7 +467,7 @@ libraries/ = SubResource("AnimationLibrary_jpx8y")
 [node name="CollisionShape2D" parent="." index="2" unique_id=2129389472]
 position = Vector2(0, 1)
 rotation = 1.5707964
-shape = SubResource("CapsuleShape2D_kbg6j")
+shape = SubResource("CapsuleShape2D_lx5dm")
 
 [node name="AuxAnimationPlayer" type="AnimationPlayer" parent="." index="3" unique_id=2116696675]
 libraries/ = SubResource("AnimationLibrary_gtqyj")

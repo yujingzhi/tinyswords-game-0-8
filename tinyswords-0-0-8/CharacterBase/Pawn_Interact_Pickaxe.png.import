@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://u1a7uqw4e2yw"
-path="res://.godot/imported/Pawn_Run_Pickaxe.png-bf5f8f1d060274e5d6bbdccb946587d9.ctex"
+uid="uid://brcfr64m1jfd1"
+path="res://.godot/imported/Pawn_Interact_Pickaxe.png-e8aaff4822e91f9de04a763482bd8eae.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://personagens/Pawn_Run_Pickaxe.png"
-dest_files=["res://.godot/imported/Pawn_Run_Pickaxe.png-bf5f8f1d060274e5d6bbdccb946587d9.ctex"]
+source_file="res://CharacterBase/Pawn_Interact_Pickaxe.png"
+dest_files=["res://.godot/imported/Pawn_Interact_Pickaxe.png-e8aaff4822e91f9de04a763482bd8eae.ctex"]
 
 [params]
 

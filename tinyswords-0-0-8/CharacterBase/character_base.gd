@@ -1,15 +1,15 @@
 extends CharacterBody2D
-class_name PersonagemBase
+class_name CharacterBase
 
 # ==========================================
 # --- 1. 变量定义与编辑器配置 (Exports) ---
 # ==========================================
 
-@export_category("Objetos")
-@export var _textura: Sprite2D = null         # 引用主角的精灵节点
-@export var _animador: AnimationPlayer = null # 引用动画播放器
+@export_category("Objects") # 英文分类名
+@export var sprite: Sprite2D = null           # 原 _textura
+@export var animation_player: AnimationPlayer = null # 原 _animador
 
-@export_category("Movimento")
+@export_category("Movement")
 @export var move_speed: float = 200.0         # 移动速度
 @export_dir var texture_folder_path: String = "res://personagens" # 图片资源文件夹路径
 
@@ -18,7 +18,7 @@ class_name PersonagemBase
 @export var sfx_stone: AudioStream            # 挖矿时的受击音效
 
 @export_group("Audio Switch")
-# 这里存放切换武器时的反馈音效，建议使用 AudioStreamRandomizer (随机包)
+# 切换武器时的反馈音效
 @export var sfx_heavy: AudioStream # 沉重武器音效 (对应 锤子)
 @export var sfx_sharp: AudioStream # 清脆利器音效 (对应 斧头、镐子、小刀)
 @export var sfx_hand: AudioStream  # 收起武器音效 (对应 空手)
@@ -48,8 +48,8 @@ var footstep_timer: float = 0.0               # 脚步声计时器
 
 func _ready() -> void:
 	# 监听动画完成信号，以便在攻击动画结束时解锁状态
-	if _animador:
-		_animador.animation_finished.connect(_on_animation_finished)
+	if animation_player:
+		animation_player.animation_finished.connect(_on_animation_finished)
 	
 func _physics_process(delta: float) -> void:
 	# 检测攻击输入
@@ -72,7 +72,8 @@ func _physics_process(delta: float) -> void:
 	_update_animation_state()    # 更新动画和皮肤
 
 	# 处理攻击范围的左右翻转 (基于主角精灵的朝向)
-	if _textura.flip_h: 
+	# ⚠️ 注意：这里原来的 _textura 已经变成了 sprite
+	if sprite.flip_h: 
 		attack_area_collision.position.x = -80
 	else: 
 		attack_area_collision.position.x = 80
@@ -126,7 +127,7 @@ func _apply_weapon_change() -> void:
 	current_weapon_suffix = weapon_suffixes[current_weapon_index]
 	
 	# 控制台打印调试信息
-	print("切换武器: ", current_weapon_suffix if current_weapon_suffix != "" else "空手") 
+	print("Switch Weapon: ", current_weapon_suffix if current_weapon_suffix != "" else "Hand") 
 	
 	# 刷新动画播放器和贴图
 	_update_animation_state()
@@ -201,20 +202,21 @@ func _on_area_attack_body_entered(body: Node2D) -> void:
 				body.update_health(damage)
 				_play_sfx(sfx_wood)
 			else:
-				print("无法采集：你需要一把斧头！")
+				print("Cannot harvest: You need an Axe!")
 		elif obj_type == "rock" or obj_type == "gold":
 			if "_Pickaxe" in current_weapon_suffix:
 				body.update_health(damage)
 				_play_sfx(sfx_stone)
 			else:
-				print("无法采集：你需要一把镐子！")
+				print("Cannot harvest: You need a Pickaxe!")
 
 # ==========================================
 # --- 7. 动画状态机 (核心) ---
 # ==========================================
 
 func _update_animation_state() -> void:
-	if _textura == null or _animador == null: return
+	# ⚠️ 检查引用是否为空 (原 _textura, _animador)
+	if sprite == null or animation_player == null: return
 
 	var state_name = ""       # 动画名
 	var file_prefix = ""      # 贴图前缀
@@ -234,7 +236,7 @@ func _update_animation_state() -> void:
 			state_name = "Attack_Axe_6f" 
 			target_hframes = 6
 		elif "_Pickaxe" in current_weapon_suffix:
-			state_name = "Attack_Pickaxe_6f"       
+			state_name = "Attack_Pickaxe_6f"        
 			target_hframes = 6
 		else:
 			state_name = "Attack_Axe_6f"
@@ -244,34 +246,34 @@ func _update_animation_state() -> void:
 		state_name = "Run"
 		file_prefix = "Run"
 		target_hframes = 6
-		# 左右转向处理
-		if velocity.x < 0: _textura.flip_h = true
-		elif velocity.x > 0: _textura.flip_h = false
+		# 左右转向处理 (原 _textura -> sprite)
+		if velocity.x < 0: sprite.flip_h = true
+		elif velocity.x > 0: sprite.flip_h = false
 	else:
 		state_name = "Idle"
 		file_prefix = "Idle"
 		target_hframes = 8 
 	
 	# 如果帧数变化了，重置当前帧，防止贴图错位
-	if _textura.hframes != target_hframes:
-		_textura.frame = 0 
-		_textura.hframes = target_hframes
+	if sprite.hframes != target_hframes:
+		sprite.frame = 0 
+		sprite.hframes = target_hframes
 
 	# 播放动画
-	if _animador.has_animation(state_name):
-		if _animador.current_animation != state_name:
-			_animador.play(state_name)
+	if animation_player.has_animation(state_name):
+		if animation_player.current_animation != state_name:
+			animation_player.play(state_name)
 			# 动态加速攻击动画，让打击感更爽快
 			if "Attack" in state_name:
-				_animador.speed_scale = 2.0 
+				animation_player.speed_scale = 2.0 
 			else:
-				_animador.speed_scale = 1.0 
+				animation_player.speed_scale = 1.0 
 
 	# 拼接文件路径 (规则：Pawn_动作_武器后缀.png)
 	var file_name = "Pawn_" + file_prefix + current_weapon_suffix + ".png"
 	var full_path = texture_folder_path.path_join(file_name)
 	
 	# 只有当路径变化时才加载新贴图，节省性能
-	if _textura.texture == null or _textura.texture.resource_path != full_path:
+	if sprite.texture == null or sprite.texture.resource_path != full_path:
 		if FileAccess.file_exists(full_path):
-			_textura.texture = load(full_path)
+			sprite.texture = load(full_path)

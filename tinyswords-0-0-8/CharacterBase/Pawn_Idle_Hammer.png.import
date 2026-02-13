@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b8u8d2og52kta"
-path="res://.godot/imported/Pawn_Interact_Hammer.png-f8b5a7ecf051c09ea55085a4a29c14c4.ctex"
+uid="uid://dgnhjflotjsvo"
+path="res://.godot/imported/Pawn_Idle_Hammer.png-c5b925815a7ae8e09cb86074422e4697.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://personagens/Pawn_Interact_Hammer.png"
-dest_files=["res://.godot/imported/Pawn_Interact_Hammer.png-f8b5a7ecf051c09ea55085a4a29c14c4.ctex"]
+source_file="res://CharacterBase/Pawn_Idle_Hammer.png"
+dest_files=["res://.godot/imported/Pawn_Idle_Hammer.png-c5b925815a7ae8e09cb86074422e4697.ctex"]
 
 [params]
 

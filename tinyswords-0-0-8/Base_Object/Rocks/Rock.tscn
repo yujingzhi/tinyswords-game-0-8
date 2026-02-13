@@ -263,11 +263,13 @@ _data = {
 }
 
 [node name="Rock" unique_id=1038814277 instance=ExtResource("1_jdsy1")]
+y_sort_enabled = true
 collision_layer = 4
 collision_mask = 0
 object_type = "Rock_"
 type = "rock"
 drop_item_scene = ExtResource("2_3kfw8")
+drop_item_texture = ExtResource("2_eikrv")
 
 [node name="Sprite2D" parent="." index="0" unique_id=1868589021]
 texture = ExtResource("2_eikrv")
