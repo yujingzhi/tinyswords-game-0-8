@@ -17,6 +17,7 @@ physics_material_override = SubResource("PhysicsMaterial_qgsat")
 gravity_scale = 0.0
 linear_damp = 2.075
 script = ExtResource("1_juqr8")
+item_type = ""
 sfx_drop = ExtResource("2_qgsat")
 sfx_pickup = ExtResource("3_ddrya")
 

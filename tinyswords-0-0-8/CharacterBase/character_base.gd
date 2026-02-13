@@ -1,13 +1,15 @@
 extends CharacterBody2D
 class_name CharacterBase 
 
+
+
 # ==========================================
 # ⚙️ 1. 编辑器配置区域 (Exports)
 # ==========================================
 @export_category("Node References")
 @export var sprite: Sprite2D = null           
 @export var animation_player: AnimationPlayer = null 
-
+@onready var area_attack_node: Area2D = $AreaAttack
 @export_category("Movement & Stats")
 @export var move_speed: float = 200.0         
 @export_dir var texture_folder_path: String = "res://CharacterBase" 
@@ -19,6 +21,17 @@ class_name CharacterBase
 @export var sfx_sharp: AudioStream            
 @export var sfx_hand: AudioStream             
 
+# ✨ 优化：使用强类型的枚举来定义工具
+enum ToolType { 
+	HAND = -1, 
+	SWORD = 0, 
+	AXE = 1, 
+	PICKAXE = 2, 
+	HAMMER = 3 
+}
+
+
+
 # ==========================================
 # 🔗 2. 内部节点与状态变量
 # ==========================================
@@ -27,9 +40,10 @@ class_name CharacterBase
 @onready var fx_audio: AudioStreamPlayer = $FXAudio 
 
 # --- ⚔️ 武器系统状态 ---
-var current_weapon_index: int = -1 
+# 将原本的 int 替换为 ToolType
+var current_weapon_index: ToolType = ToolType.HAND
 var current_weapon_suffix: String = "" 
-const MAX_WEAPON_COUNT: int = 4 
+const MAX_WEAPON_COUNT: int = 4
 
 # --- 🏃‍♂️ 角色状态机 ---
 var is_attacking: bool = false 
@@ -148,8 +162,13 @@ func _physics_process(_delta: float) -> void:
 		state_name = "Run"
 		file_prefix = "Run"
 		target_hframes = 6
-		if velocity.x < 0: sprite.flip_h = true
-		elif velocity.x > 0: sprite.flip_h = false
+# ✨ 核心优化：利用布尔值和三元运算符，告别臃肿的 if/else
+		var is_moving_left: bool = velocity.x < 0
+		sprite.flip_h = is_moving_left
+		
+		# 安全判定后，左转 scale.x 为 -1，否则为 1
+		if is_instance_valid(area_attack_node):
+			area_attack_node.scale.x = -1.0 if is_moving_left else 1.0
 	else:
 		state_name = "Idle"
 		file_prefix = "Idle"
@@ -246,31 +265,34 @@ func _character_base(_delta: float) -> void:
 # 💥 7. 伤害与物理碰撞 (强力鉴定系统)
 # ==========================================
 func _on_area_attack_body_entered(body: Node2D) -> void:
-	if body is TileMapLayer or body.is_in_group("player") or body.name == "Player":
+	# 1. 快速过滤自己或地图层，避免误伤
+	if body == self or body is TileMapLayer:
 		return
 		
-	if body.has_method("update_health"):
+	# ✨ 核心优化：多态转换。如果 body 不是 ObjectBase 的子类，这里会返回 null
+	var interactable: ObjectBase = body as ObjectBase
+	
+	# 如果转换成功，说明它绝对是我们定义的互动物体 (树、矿石等)
+	if is_instance_valid(interactable):
+		var can_damage: bool = false
 		
-		# 💡 放宽身份识别：不管 type 大小写，不管名字，只要包含 Tree 就是树！包含 Gold 或是矿！
-		var raw_name = body.name.to_lower()
-		var raw_type = ""
-		if "type" in body: raw_type = str(body.type).to_lower()
+		# 提取并统一转化为小写，防止你在编辑器里手滑写成 "tree" 或 "Tree"
+		var target_type: String = interactable.type.to_lower()
+		
+		# 2. 严谨的工具门禁匹配 (配合优化一的枚举)
+		match current_weapon_index:
+			ToolType.AXE:
+				if target_type == "tree": can_damage = true
+			ToolType.PICKAXE, ToolType.HAMMER:
+				if target_type == "rock" or target_type == "gold": can_damage = true
+			ToolType.SWORD:
+				if target_type == "enemy": can_damage = true # 为未来的敌人预留
+				
+		# 3. 结算伤害
+		if can_damage:
+			# 假设默认造成 1 点伤害。如果你的主角有攻击力变量，请替换为 attack_damage
+			interactable.update_health(1) 
 			
-		var is_tree = ("tree" in raw_type or "tree" in raw_name)
-		var is_rock = ("gold" in raw_type or "rock" in raw_type or "gold" in raw_name or "rock" in raw_name)
-		
-		# 🛡️ 职业门槛
-		if is_tree and not "_Axe" in current_weapon_suffix:
-			print("❌ 砍树必须用【斧头】！")
-			return 
-		if is_rock and not "_Pickaxe" in current_weapon_suffix:
-			print("❌ 挖矿必须用【镐头】！")
-			return 
-			
-		var damage = 1 
-		body.update_health(damage)
-		
-		if "_Axe" in current_weapon_suffix:
-			_play_sfx(sfx_wood) 
-		elif "_Pickaxe" in current_weapon_suffix:
-			_play_sfx(sfx_stone)
+			# (可选) 在这里根据工具播放你提前 @export 好的对应音效，比如 sfx_wood 或 sfx_stone
+		else:
+			print("【导师提示】工具不匹配！你拿着工具ID: ", current_weapon_index, " 敲不动 ", target_type)
