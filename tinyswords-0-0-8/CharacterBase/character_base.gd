@@ -31,27 +31,33 @@ var current_weapon_index: int = -1
 var current_weapon_suffix: String = "" 
 const MAX_WEAPON_COUNT: int = 4 
 
-# --- 🏃‍♂️ 角色状态机 (回归原版逻辑) ---
+# --- 🏃‍♂️ 角色状态机 ---
 var is_attacking: bool = false 
 
-# 💡 极简派性能黑魔法：缓存字典，防止每帧读取硬盘
+# --- 🎵 行走音效时钟 ---
+var step_timer: float = 0.0
+const STEP_INTERVAL: float = 0.35 # 脚步声间隔(秒)，数值越小响得越快
+
+# 💡 图片缓存字典
 var texture_cache: Dictionary = {}
 
 # ==========================================
 # 🚀 3. 生命周期与输入中枢
 # ==========================================
 func _ready() -> void:
+	# 🌟 强制给主角上户口，确保无论在哪个地图，掉落物都能认出你！
+	add_to_group("player")
+	add_to_group("peao")
+	
 	_update_weapon_state()
 	if attack_area_collision:
 		attack_area_collision.disabled = true
 		
-	# 🌟 导师神识修正：用代码强制连接信号，防止你在编辑器里忘记连线导致卡死！
 	if animation_player:
 		if not animation_player.animation_finished.is_connected(_on_animation_player_animation_finished):
 			animation_player.animation_finished.connect(_on_animation_player_animation_finished)
 
 func _unhandled_input(event: InputEvent) -> void:
-	# 🚧 状态锁：正在攻击时，无视切换武器的指令
 	if is_attacking: return
 
 	if event.is_action_pressed("weapon_1"): _toggle_weapon(0)
@@ -62,7 +68,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("scroll_up"): _cycle_weapon(1)
 	elif event.is_action_pressed("scroll_down"): _cycle_weapon(-1)
 	
-	# 允许连击打断 (保留原版的清爽手感)
 	elif event.is_action_pressed("attack") and current_weapon_index != -1:
 		_start_attack()
 
@@ -100,23 +105,28 @@ func _play_sfx(stream: AudioStream) -> void:
 		fx_audio.play()
 
 # ==========================================
-# 🏃‍♂️ 5. 物理移动与渲染引擎 (完美融合)
+# 🏃‍♂️ 5. 物理移动与渲染引擎
 # ==========================================
 func _physics_process(_delta: float) -> void:
-	# --- 1. 移动逻辑 ---
 	if is_attacking:
 		velocity = Vector2.ZERO
 	else:
-		# ⚠️ 破案了：你之前用的是 move_left 等自定义按键，而不是 ui_left！
 		var direction: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 		if direction != Vector2.ZERO:
 			velocity = direction * move_speed
+			
+			# 🎵 播放极其精准的脚步声
+			step_timer -= _delta
+			if step_timer <= 0.0:
+				if step_audio: step_audio.play()
+				step_timer = STEP_INTERVAL # 重置时钟
 		else:
 			velocity = Vector2.ZERO
+			step_timer = 0.0 # 停下时瞬间归零，保证下次一迈步就响
 			
 	move_and_slide()
 	
-	# --- 2. 状态与动画名推演 ---
+	# --- 状态与动画名推演 ---
 	var state_name = "Idle"
 	var file_prefix = "Idle"
 	var target_hframes = 8
@@ -138,7 +148,6 @@ func _physics_process(_delta: float) -> void:
 		state_name = "Run"
 		file_prefix = "Run"
 		target_hframes = 6
-		# 🟢 完美继承原版的左右翻转逻辑
 		if velocity.x < 0: sprite.flip_h = true
 		elif velocity.x > 0: sprite.flip_h = false
 	else:
@@ -146,29 +155,24 @@ func _physics_process(_delta: float) -> void:
 		file_prefix = "Idle"
 		target_hframes = 8 
 	
-	# --- 3. 防错：调整贴图帧数 ---
 	if sprite.hframes != target_hframes:
 		sprite.frame = 0 
 		sprite.hframes = target_hframes
 
-	# --- 4. 播放动画 & 动态调速 ---
 	if animation_player.has_animation(state_name):
 		if animation_player.current_animation != state_name:
 			animation_player.play(state_name)
-			
-			# 🟢 继承原版的神来之笔：攻击时 2倍速，收刀时恢复！
 			if "Attack" in state_name:
 				animation_player.speed_scale = 2.0 
 			else:
 				animation_player.speed_scale = 1.0 
 				
-	# --- 5. 强力镇压级：缓存与换图引擎 ---
 	var target_texture_path = texture_folder_path + "/Pawn_" + file_prefix + current_weapon_suffix + ".png"
 	if not texture_cache.has(target_texture_path):
 		if ResourceLoader.exists(target_texture_path):
 			texture_cache[target_texture_path] = load(target_texture_path)
 		else:
-			return # 找不到图片就不换，防止崩溃
+			return 
 			
 	var target_tex = texture_cache[target_texture_path]
 	if sprite.texture != target_tex:
@@ -192,7 +196,6 @@ func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 # 💥 7. 伤害与物理碰撞
 # ==========================================
 func _on_area_attack_body_entered(body: Node2D) -> void:
-	# 🟢 排除干扰：不打自己，也不打地形 UI
 	if body is TileMapLayer or body.is_in_group("player") or body.name == "Player":
 		return
 		
@@ -200,7 +203,6 @@ func _on_area_attack_body_entered(body: Node2D) -> void:
 		var damage = 1 
 		body.update_health(damage)
 		
-		# 音效反馈
 		if "_Axe" in current_weapon_suffix or "_Hammer" in current_weapon_suffix:
 			_play_sfx(sfx_wood) 
 		elif "_Pickaxe" in current_weapon_suffix:
