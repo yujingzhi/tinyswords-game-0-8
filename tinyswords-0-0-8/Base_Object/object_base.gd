@@ -49,6 +49,15 @@ func update_health(damage: int) -> void:
 	if health <= 0:
 		die()
 
+
+func _resolve_drop_item_type() -> String:
+	var normalized = String(type).to_lower()
+	if normalized == "tree":
+		return "wood"
+	if normalized == "gold":
+		return "gold"
+	return normalized
+
 # --- 死亡逻辑 (核心修改区) ---
 func die() -> void:
 	print("💀 物体死亡: ", name)
@@ -56,11 +65,14 @@ func die() -> void:
 	if drop_item_scene:
 		# 🔥🔥🔥 1. 计算本次掉落的总数 🔥🔥🔥
 		var final_drop_count = randi_range(min_drop, max_drop)
-		print("  💰 本次掉落数量: ", final_drop_count)
+		var drop_type = _resolve_drop_item_type()
+		print("  💰 本次掉落数量: ", final_drop_count, " | 类型: ", drop_type)
 
 		# 🔥🔥🔥 2. 使用循环生成掉落物 🔥🔥🔥
 		for i in range(final_drop_count):
 			var item = drop_item_scene.instantiate()
+			if "item_type" in item:
+				item.item_type = drop_type
 			
 			# 换肤逻辑
 			var sprite_node = item.find_child("Sprite2D", true, false)
