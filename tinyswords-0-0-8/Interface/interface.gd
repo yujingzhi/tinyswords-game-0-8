@@ -26,10 +26,10 @@ var inventory_data: Dictionary = {}
 
 # --- 🚀 初始化 ---
 func _ready() -> void:
-	# 🌟【架构解耦】把自己加入 interface 组，外界不需要知道你的路径，发消息就能找到你
 	add_to_group("interface")
 	
-	update_weapon_indicator(0)
+	# 💡 引擎哲学：游戏一开始，默认不拿任何武器 (-1 代表空手)
+	update_weapon_indicator(-1) 
 	
 	if inventory_panel:
 		origin_pos = inventory_panel.position
@@ -78,12 +78,36 @@ func refresh_inventory_ui() -> void:
 			# 种类发完了，剩下的全是空格子
 			slot.update_slot(null, 0)
 
-# --- ⚔️ 武器栏逻辑 (保留你的原有代码流) ---
-func update_weapon_indicator(player_index: int) -> void:
+# --- ⚔️ 武器栏逻辑 ---
+# --- ⚔️ 武器栏高级视觉交互 ---
+func update_weapon_indicator(weapon_index: int) -> void:
 	if not slots_container: return
 	var slots = slots_container.get_children()
+	
+	# 💡 遍历所有武器图标
+	for i in range(slots.size()):
+		var slot = slots[i]
+		
+		# ✨ 关键防错：动态设置中心锚点，保证动画从图片正中心缩放/旋转
+		slot.pivot_offset = slot.size / 2 
+		
+		var tween = create_tween().set_parallel(true)
+		
+		if i == weapon_index:
+			# 🟢 【选中状态】：拔出武器！瞬间明亮、放大并带弹簧回弹、轻微翘起展示
+			tween.tween_property(slot, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.1) # 纯白，无透明
+			tween.tween_property(slot, "rotation", deg_to_rad(-12), 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT) # 往左翘起12度
+			
+			# 利用链式动画做弹簧回弹：先迅速变大到 1.3，再回落到 1.15
+			var bounce_tween = create_tween()
+			bounce_tween.tween_property(slot, "scale", Vector2(1.3, 1.3), 0.1)
+			bounce_tween.tween_property(slot, "scale", Vector2(1.15, 1.15), 0.2).set_trans(Tween.TRANS_SPRING)
+		else:
+			# 🔴 【未选中 / 取消状态】：收起武器！变灰暗、缩小、放平
+			tween.tween_property(slot, "modulate", Color(0.3, 0.3, 0.3, 0.6), 0.2) # 变暗并半透明
+			tween.tween_property(slot, "rotation", 0.0, 0.2).set_trans(Tween.TRANS_SINE) # 角度回归水平
+			tween.tween_property(slot, "scale", Vector2(0.8, 0.8), 0.2).set_trans(Tween.TRANS_SINE) # 缩回到0.8
 	# 你的武器轮换逻辑写在这里...
-	pass
 
 # --- 🎒 背包开关动画逻辑 (保持你的原有代码不变) ---
 func _on_bag_button_pressed() -> void:

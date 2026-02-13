@@ -1,279 +1,223 @@
 extends CharacterBody2D
-class_name CharacterBase
+class_name CharacterBase # 注册为全局基类，方便 Player 等子类继承
 
 # ==========================================
-# --- 1. 变量定义与编辑器配置 (Exports) ---
+# ⚙️ 1. 编辑器配置区域 (Exports)
 # ==========================================
+@export_category("Node References")
+@export var sprite: Sprite2D = null           # 务必在检查器拖入 Sprite2D
+@export var animation_player: AnimationPlayer = null # 务必在检查器拖入 AnimationPlayer
 
-@export_category("Objects") # 英文分类名
-@export var sprite: Sprite2D = null           # 原 _textura
-@export var animation_player: AnimationPlayer = null # 原 _animador
-
-@export_category("Movement")
+@export_category("Movement & Stats")
 @export var move_speed: float = 200.0         # 移动速度
-@export_dir var texture_folder_path: String = "res://personagens" # 图片资源文件夹路径
+# 💡 引擎哲学：暴露资源路径，方便后续如果换了文件夹，不用改代码
+@export_dir var texture_folder_path: String = "res://CharacterBase" 
 
 @export_category("Audio SFX")
-@export var sfx_wood: AudioStream             # 砍树时的受击音效
-@export var sfx_stone: AudioStream            # 挖矿时的受击音效
-
-@export_group("Audio Switch")
-# 切换武器时的反馈音效
-@export var sfx_heavy: AudioStream # 沉重武器音效 (对应 锤子)
-@export var sfx_sharp: AudioStream # 清脆利器音效 (对应 斧头、镐子、小刀)
-@export var sfx_hand: AudioStream  # 收起武器音效 (对应 空手)
+@export var sfx_wood: AudioStream             # 砍树交互音效
+@export var sfx_stone: AudioStream            # 挖矿交互音效
+@export var sfx_heavy: AudioStream            # 沉重武器切换音效 (锤子)
+@export var sfx_sharp: AudioStream            # 清脆利器切换音效 (斧、镐、刀)
+@export var sfx_hand: AudioStream             # 空手切换音效
 
 # ==========================================
-# --- 2. 节点引用与内部变量 ---
+# 🔗 2. 内部节点与状态变量
 # ==========================================
-
 @onready var attack_area_collision: CollisionShape2D = $AreaAttack/CollisionShape2D
 @onready var step_audio: AudioStreamPlayer = $StepAudio
-@onready var fx_audio: AudioStreamPlayer = $FXAudio # 专门播放交互音效的节点
+@onready var fx_audio: AudioStreamPlayer = $FXAudio 
 
-# 武器系统核心数据
-# 顺序必须与 UI 快捷栏一致：0:空手, 1:锤子, 2:斧头, 3:小刀, 4:镐子
-var weapon_suffixes: Array = ["", "_Hammer", "_Axe", "_Knife", "_Pickaxe"]
-var current_weapon_index: int = 0             # 当前选中的武器索引
-var current_weapon_suffix: String = ""        # 当前选中的武器后缀 (如 "_Axe")
-var is_attacking: bool = false                # 状态锁：攻击时禁止移动和切换
+# --- ⚔️ 武器系统状态 ---
+var current_weapon_index: int = -1 
+var current_weapon_suffix: String = "" 
+const MAX_WEAPON_COUNT: int = 4 
 
-# 步频控制
-var footstep_interval: float = 0.3            # 脚步声间隔时间
-var footstep_timer: float = 0.0               # 脚步声计时器
+# --- 🏃‍♂️ 角色状态机 ---
+var current_state: String = "Idle" # 可选状态: "Idle", "Run", "Attack"
+var current_texture_path: String = "" # 性能优化：缓存当前图片路径，防止每帧重复加载
 
 # ==========================================
-# --- 3. 生命周期与物理循环 ---
+# 🚀 3. 生命周期与输入中枢
 # ==========================================
-
 func _ready() -> void:
-	# 监听动画完成信号，以便在攻击动画结束时解锁状态
-	if animation_player:
-		animation_player.animation_finished.connect(_on_animation_finished)
+	# 游戏开始时，默认空手并刷新 UI
+	_update_weapon_state()
 	
-func _physics_process(delta: float) -> void:
-	# 检测攻击输入
-	if Input.is_action_just_pressed("attack"):
-		attack()
-
-	# 移动逻辑：攻击时速度归零
-	if is_attacking:
-		velocity = Vector2.ZERO
-	else:
-		# 获取输入向量 (上下左右)
-		var direction: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
-		if direction != Vector2.ZERO:
-			velocity = direction * move_speed
-		else:
-			velocity = Vector2.ZERO
-
-	move_and_slide() # 执行物理移动
-	_handle_footstep_audio(delta) # 处理脚步声
-	_update_animation_state()    # 更新动画和皮肤
-
-	# 处理攻击范围的左右翻转 (基于主角精灵的朝向)
-	# ⚠️ 注意：这里原来的 _textura 已经变成了 sprite
-	if sprite.flip_h: 
-		attack_area_collision.position.x = -80
-	else: 
-		attack_area_collision.position.x = 80
-		
-	# 确保攻击 Area 不受父级缩放影响
-	if $AreaAttack:
-		$AreaAttack.scale = Vector2(1, 1)
-
-# ==========================================
-# --- 4. 武器切换核心逻辑 ---
-# ==========================================
+	# ⚠️ 防错：确保一开始攻击判定框是关闭的
+	if attack_area_collision:
+		attack_area_collision.disabled = true
 
 func _unhandled_input(event: InputEvent) -> void:
-	# 如果正在攻击，锁死输入，防止快速切武器导致动画崩坏
-	if is_attacking: return
-		
-	var changed: bool = false
-	var size = weapon_suffixes.size()
-	
-	# --- A. 鼠标滚轮逻辑 ---
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			current_weapon_index = (current_weapon_index - 1 + size) % size
-			changed = true
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			current_weapon_index = (current_weapon_index + 1) % size
-			changed = true
+	# 只有在非攻击状态下，才允许切换武器
+	if current_state == "Attack": return
 
-	# --- B. 数字快捷键逻辑 (1, 2, 3, 4) ---
-	var target_index: int = -1
-	# 检查 Input Map 中定义的动作
-	if Input.is_action_just_pressed("weapon_1"): target_index = 1
-	elif Input.is_action_just_pressed("weapon_2"): target_index = 2
-	elif Input.is_action_just_pressed("weapon_3"): target_index = 3
-	elif Input.is_action_just_pressed("weapon_4"): target_index = 4
+	# 【按键切换】
+	if event.is_action_pressed("weapon_1"): _toggle_weapon(0)
+	elif event.is_action_pressed("weapon_2"): _toggle_weapon(1)
+	elif event.is_action_pressed("weapon_3"): _toggle_weapon(2)
+	elif event.is_action_pressed("weapon_4"): _toggle_weapon(3)
 	
-	if target_index != -1:
-		# ✨ Toggle逻辑：如果当前已经是该武器，再次按下则收回(变为0：空手)
-		if current_weapon_index == target_index:
-			current_weapon_index = 0
-		else:
-			current_weapon_index = target_index
-		changed = true
+	# 【滚轮切换】
+	elif event.is_action_pressed("scroll_up"): _cycle_weapon(1)
+	elif event.is_action_pressed("scroll_down"): _cycle_weapon(-1)
+	
+	# 【攻击触发】(假设你绑定了鼠标左键为 attack)
+	elif event.is_action_pressed("attack") and current_weapon_index != -1:
+		_start_attack()
 
-	# --- C. 统一应用变换 ---
-	if changed:
-		_apply_weapon_change()
+# ==========================================
+# 🔄 4. 武器切换逻辑 (高内聚)
+# ==========================================
+func _toggle_weapon(target_index: int) -> void:
+	if current_weapon_index == target_index:
+		current_weapon_index = -1 # 收起武器
+	else:
+		current_weapon_index = target_index
+	_update_weapon_state()
 
-func _apply_weapon_change() -> void:
-	# 更新当前武器后缀
-	current_weapon_suffix = weapon_suffixes[current_weapon_index]
-	
-	# 控制台打印调试信息
-	print("Switch Weapon: ", current_weapon_suffix if current_weapon_suffix != "" else "Hand") 
-	
-	# 刷新动画播放器和贴图
-	_update_animation_state()
-	
-	# 播放对应材质的物理切换音效
-	match current_weapon_suffix:
-		"_Hammer":
-			_play_sfx(sfx_heavy)     # 沉重金属感
-		"_Axe", "_Pickaxe", "_Knife":
-			_play_sfx(sfx_sharp)     # 清脆锐利感
-		"": 
-			_play_sfx(sfx_hand)      # 皮革或布料摩擦感
-	
-	# 通知全局 UI 组：更新选中的武器高亮框
+func _cycle_weapon(direction: int) -> void:
+	current_weapon_index += direction
+	if current_weapon_index >= MAX_WEAPON_COUNT:
+		current_weapon_index = -1 
+	elif current_weapon_index < -1:
+		current_weapon_index = MAX_WEAPON_COUNT - 1 
+	_update_weapon_state()
+
+func _update_weapon_state() -> void:
 	get_tree().call_group("interface", "update_weapon_indicator", current_weapon_index)
-
-# ==========================================
-# --- 5. 音效与动画辅助函数 ---
-# ==========================================
+	
+	match current_weapon_index:
+		-1: 
+			current_weapon_suffix = ""
+			_play_sfx(sfx_hand)
+		0: 
+			current_weapon_suffix = "_Hammer"
+			_play_sfx(sfx_heavy)
+		1: 
+			current_weapon_suffix = "_Axe"
+			_play_sfx(sfx_sharp)
+		2: 
+			current_weapon_suffix = "_Knife"
+			_play_sfx(sfx_sharp)
+		3: 
+			current_weapon_suffix = "_Pickaxe"
+			_play_sfx(sfx_sharp)
+			
+	# 武器改变后，立刻刷新一次画面表现
+	_refresh_visuals()
 
 func _play_sfx(stream: AudioStream) -> void:
-	# 通用音效播放器，自动加入随机音调变化让声音更自然
 	if fx_audio and stream:
 		fx_audio.stream = stream
-		fx_audio.pitch_scale = randf_range(0.9, 1.1)
 		fx_audio.play()
 
-func _handle_footstep_audio(delta: float) -> void:
-	# 基于移动速度和时间计时的脚步声逻辑
-	if not step_audio: return
-	if velocity.length() > 0:
-		footstep_timer -= delta
-		if footstep_timer <= 0:
-			footstep_timer = footstep_interval 
-			step_audio.pitch_scale = randf_range(0.9, 1.1)
-			step_audio.play()
-	else:
-		footstep_timer = 0 # 停下时重置，确保下次起步立即有声音
-
 # ==========================================
-# --- 6. 战斗与交互逻辑 ---
+# 🏃‍♂️ 5. 物理移动与状态判定
 # ==========================================
-
-func attack() -> void:
-	# 空手状态不允许攻击
-	if current_weapon_suffix == "":
+func _physics_process(_delta: float) -> void:
+	# 💡 极简状态机：如果正在攻击，禁止移动！
+	if current_state == "Attack":
+		velocity = Vector2.ZERO
+		move_and_slide()
 		return
-	is_attacking = true
-	_update_animation_state()
-
-func _on_animation_finished(anim_name: String) -> void:
-	# 当任何以 "Attack" 开头的动画结束时，释放攻击锁
-	if anim_name.begins_with("Attack"):
-		is_attacking = false
-		_update_animation_state()
-
-func _on_area_attack_body_entered(body: Node2D) -> void:
-	# 排除掉自己、其他玩家或者地形层，防止误伤
-	if body is TileMapLayer or body.is_in_group("player") or body.is_in_group("peao"):
-		return
-
-	# 检测目标是否有 update_health 方法 (即是否为可破坏物体)
-	if body.has_method("update_health"):
-		var obj_type = ""
-		if "type" in body:
-			obj_type = body.type.to_lower()
-		var damage = 1 
 		
-		# 匹配资源采集逻辑
-		if obj_type == "tree":
-			if "_Axe" in current_weapon_suffix:
-				body.update_health(damage)
-				_play_sfx(sfx_wood)
-			else:
-				print("Cannot harvest: You need an Axe!")
-		elif obj_type == "rock" or obj_type == "gold":
-			if "_Pickaxe" in current_weapon_suffix:
-				body.update_health(damage)
-				_play_sfx(sfx_stone)
-			else:
-				print("Cannot harvest: You need a Pickaxe!")
-
-# ==========================================
-# --- 7. 动画状态机 (核心) ---
-# ==========================================
-
-func _update_animation_state() -> void:
-	# ⚠️ 检查引用是否为空 (原 _textura, _animador)
-	if sprite == null or animation_player == null: return
-
-	var state_name = ""       # 动画名
-	var file_prefix = ""      # 贴图前缀
-	var target_hframes = 6    # 贴图水平帧数
+	# 获取输入向量
+	var direction := Input.get_vector("ui_left", "ui_right", "ui_up", "ui_down")
+	velocity = direction * move_speed
+	move_and_slide()
 	
-	# 状态优先级判断
-	if is_attacking:
-		file_prefix = "Interact" 
-		# 这里需要根据武器类型，手动匹配你在动画播放器里创建的名称和帧数
-		if "_Hammer" in current_weapon_suffix:
-			state_name = "Attack_Hammer_3f" 
-			target_hframes = 3
-		elif "_Knife" in current_weapon_suffix:
-			state_name = "Attack_Knife_4f" 
-			target_hframes = 4
-		elif "_Axe" in current_weapon_suffix:
-			state_name = "Attack_Axe_6f" 
-			target_hframes = 6
-		elif "_Pickaxe" in current_weapon_suffix:
-			state_name = "Attack_Pickaxe_6f"        
-			target_hframes = 6
-		else:
-			state_name = "Attack_Axe_6f"
-			target_hframes = 6
-
-	elif velocity != Vector2.ZERO:
-		state_name = "Run"
-		file_prefix = "Run"
-		target_hframes = 6
-		# 左右转向处理 (原 _textura -> sprite)
-		if velocity.x < 0: sprite.flip_h = true
-		elif velocity.x > 0: sprite.flip_h = false
+	# 判定当前的运动状态
+	if velocity.length() > 0:
+		current_state = "Run"
+		if sprite: sprite.flip_h = velocity.x < 0
 	else:
-		state_name = "Idle"
+		current_state = "Idle"
+		
+	# 每帧调用视觉刷新（内部有性能锁，不用担心掉帧）
+	_refresh_visuals()
+
+# ==========================================
+# 🎨 6. 动态渲染引擎 (核心神识)
+# ==========================================
+func _refresh_visuals() -> void:
+	if not sprite or not animation_player: return
+	
+	var file_prefix: String = "Idle"
+	var anim_name: String = "Idle"
+	var target_hframes: int = 8
+	
+	# 🟢 根据当前状态，推演对应的图片前缀、动画名和帧数
+	if current_state == "Attack":
+		file_prefix = "Interact" # Tiny Swords 的攻击图叫 Interact
+		if "_Hammer" in current_weapon_suffix:
+			anim_name = "Attack_Hammer_3f"; target_hframes = 3
+		elif "_Knife" in current_weapon_suffix:
+			anim_name = "Attack_Knife_4f"; target_hframes = 4
+		elif "_Axe" in current_weapon_suffix:
+			anim_name = "Attack_Axe_6f"; target_hframes = 6
+		elif "_Pickaxe" in current_weapon_suffix:
+			anim_name = "Attack_Pickaxe_6f"; target_hframes = 6
+			
+	elif current_state == "Run":
+		file_prefix = "Run"
+		anim_name = "Run"
+		target_hframes = 6
+		
+	else: # Idle
 		file_prefix = "Idle"
+		anim_name = "Idle"
 		target_hframes = 8 
 	
-	# 如果帧数变化了，重置当前帧，防止贴图错位
-	if sprite.hframes != target_hframes:
-		sprite.frame = 0 
-		sprite.hframes = target_hframes
-
-	# 播放动画
-	if animation_player.has_animation(state_name):
-		if animation_player.current_animation != state_name:
-			animation_player.play(state_name)
-			# 动态加速攻击动画，让打击感更爽快
-			if "Attack" in state_name:
-				animation_player.speed_scale = 2.0 
-			else:
-				animation_player.speed_scale = 1.0 
-
-	# 拼接文件路径 (规则：Pawn_动作_武器后缀.png)
-	var file_name = "Pawn_" + file_prefix + current_weapon_suffix + ".png"
-	var full_path = texture_folder_path.path_join(file_name)
+	# 🌟 性能极简派：拼凑目标图片路径
+	# 格式如：res://CharacterBase/Pawn_Run_Axe.png
+	var target_texture_path = texture_folder_path + "/Pawn_" + file_prefix + current_weapon_suffix + ".png"
 	
-	# 只有当路径变化时才加载新贴图，节省性能
-	if sprite.texture == null or sprite.texture.resource_path != full_path:
-		if FileAccess.file_exists(full_path):
-			sprite.texture = load(full_path)
+	# 🔒 性能锁：只有当需要更换的图片路径，和当前路径【不一样】时，才去读内存/硬盘！
+	if current_texture_path != target_texture_path:
+		if ResourceLoader.exists(target_texture_path):
+			sprite.texture = load(target_texture_path)
+			sprite.hframes = target_hframes
+			sprite.frame = 0 # ⚠️ 致命防错：换图片必须归零帧，否则数组越界
+			current_texture_path = target_texture_path
+		else:
+			printerr("❌ 渲染错误！找不到图片: ", target_texture_path)
+			
+	# 确保动画在播放正确的那一个
+	if animation_player.has_animation(anim_name):
+		if animation_player.current_animation != anim_name:
+			animation_player.play(anim_name)
+
+# ==========================================
+# ⚔️ 7. 攻击行为控制
+# ==========================================
+func _start_attack() -> void:
+	current_state = "Attack"
+	if attack_area_collision:
+		attack_area_collision.disabled = false # 开启伤害判定框
+	_refresh_visuals()
+
+# ⚠️ 必须连接 AnimationPlayer 的 animation_finished 信号到这个函数！
+func _on_animation_player_animation_finished(anim_name: StringName) -> void:
+	if "Attack" in anim_name:
+		current_state = "Idle" # 攻击结束，恢复站立状态
+		if attack_area_collision:
+			attack_area_collision.disabled = true # 关闭伤害判定框
+
+# ==========================================
+# 💥 8. 伤害与物理碰撞 (向外输出神识)
+# ==========================================
+func _on_area_attack_body_entered(body: Node2D) -> void:
+	# 💡 极简派【鸭子类型 Duck Typing】哲学：
+	# 我们不管碰到的是树、是石头还是敌人。
+	# 只要这个物体身上有 `update_health` 这个函数，我们就认定它可以被伤害！
+	if body.has_method("update_health"):
+		
+		# 假设基础伤害是 1 (以后可以根据手里拿的武器种类改成不同的伤害)
+		var damage = 1 
+		body.update_health(damage)
+		
+		# ✨ 进阶手感：播放砍中物体的反馈音效
+		if "_Axe" in current_weapon_suffix or "_Hammer" in current_weapon_suffix:
+			_play_sfx(sfx_wood) # 砍中木头的闷响
+		elif "_Pickaxe" in current_weapon_suffix:
+			_play_sfx(sfx_stone) # 敲击石头的清脆声

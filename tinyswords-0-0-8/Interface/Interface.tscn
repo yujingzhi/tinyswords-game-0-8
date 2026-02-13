@@ -143,6 +143,7 @@ expand_mode = 1
 stretch_mode = 5
 
 [node name="ColorRect" type="ColorRect" parent="Interface/Avatar/HBoxContainer/Slots_01" unique_id=875245915]
+visible = false
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -362,7 +363,6 @@ columns = 7
 
 [node name="RealDropItem" parent="." unique_id=753630725 instance=ExtResource("20_ll4ok")]
 position = Vector2(120, 211)
-item_type = "wood"
 is_static_spawn = true
 
 [node name="RealDropItem2" parent="." unique_id=472659942 instance=ExtResource("20_ll4ok")]
