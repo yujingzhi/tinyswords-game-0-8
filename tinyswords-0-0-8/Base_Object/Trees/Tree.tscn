@@ -405,7 +405,7 @@ _data = {
 &"Tree_4": SubResource("Animation_n0acx")
 }
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_lx5dm"]
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_m4jyd"]
 resource_local_to_scene = true
 radius = 6.0
 height = 18.0
@@ -452,6 +452,7 @@ _data = {
 y_sort_enabled = true
 collision_layer = 4
 collision_mask = 0
+object_type = "_Tree"
 drop_item_scene = ExtResource("2_m4jyd")
 drop_item_texture = ExtResource("3_m4jyd")
 
@@ -467,7 +468,7 @@ libraries/ = SubResource("AnimationLibrary_jpx8y")
 [node name="CollisionShape2D" parent="." index="2" unique_id=2129389472]
 position = Vector2(0, 1)
 rotation = 1.5707964
-shape = SubResource("CapsuleShape2D_lx5dm")
+shape = SubResource("CapsuleShape2D_m4jyd")
 
 [node name="AuxAnimationPlayer" type="AnimationPlayer" parent="." index="3" unique_id=2116696675]
 libraries/ = SubResource("AnimationLibrary_gtqyj")

@@ -624,7 +624,7 @@ _data = {
 &"RESET": SubResource("Animation_p43lm")
 }
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_rf140"]
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_88wgy"]
 resource_local_to_scene = true
 radius = 13.0
 height = 26.0
@@ -671,9 +671,10 @@ _data = {
 y_sort_enabled = true
 collision_layer = 4
 collision_mask = 0
-object_type = "Gold_"
+object_type = "_Gold"
 variation_count = 6
 type = "gold"
+drop_item_type = "gold"
 drop_item_scene = ExtResource("2_88wgy")
 drop_item_texture = ExtResource("3_88wgy")
 
@@ -687,7 +688,7 @@ libraries/ = SubResource("AnimationLibrary_fl3ui")
 [node name="CollisionShape2D" parent="." index="2" unique_id=2129389472]
 y_sort_enabled = true
 rotation = 1.5707964
-shape = SubResource("CapsuleShape2D_rf140")
+shape = SubResource("CapsuleShape2D_88wgy")
 
 [node name="AuxAnimationPlayer" type="AnimationPlayer" parent="." index="3" unique_id=1729801555]
 libraries/ = SubResource("AnimationLibrary_gtqyj")

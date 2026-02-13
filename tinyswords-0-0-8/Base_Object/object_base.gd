@@ -55,28 +55,27 @@ func update_health(damage: int) -> void:
 	if health <= 0:
 		die()
 
-# --- 💀 死亡逻辑 (核心手术区) ---
+# --- 💀 死亡逻辑 (核心修改区) ---
 func die() -> void:
-	print("💀 物体死亡: ", name)
+	print("💀 物体死亡: ", name, " | 自身属性类型: ", type)
 	
-	# 如果配置了掉落物场景，才生成掉落
 	if drop_item_scene:
-		# 1. 随机决定本次爆几个物品
 		var final_drop_count = randi_range(min_drop, max_drop)
 		print("  💰 本次掉落数量: ", final_drop_count)
 
-		# 2. 循环生成对应数量的物理掉落物
 		for i in range(final_drop_count):
-			var drop = drop_item_scene.instantiate() as PhysicItem
+			var drop = drop_item_scene.instantiate() 
 			
-			# 💡 【向下注入哲学】告诉掉落物：“你是一块木头/金子”
-			drop.item_type = drop_item_type
+			# 🌟 强力鉴定黑魔法：根据自身 type 决定掉什么！万无一失！
+			var my_drop_type = "wood"
+			if type == "Gold" or type == "Rock":
+				my_drop_type = "gold"
+				
+			# 如果 drop 身上有 item_type 属性，强行赋值
+			if "item_type" in drop:
+				drop.item_type = my_drop_type
 			
-			# 把它放在自己死掉的位置
 			drop.global_position = global_position
-			
-			# ⚠️ 防错：物理引擎运算期间不能直接改节点树，必须用 call_deferred 放到下一帧执行
 			get_tree().current_scene.call_deferred("add_child", drop)
 			
-	# 从游戏世界中抹除自己
 	queue_free()

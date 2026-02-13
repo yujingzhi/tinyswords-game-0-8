@@ -193,17 +193,84 @@ func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 			attack_area_collision.disabled = true
 
 # ==========================================
-# 💥 7. 伤害与物理碰撞
+# 🏃‍♂️ 7. 物理移动与渲染引擎
+# ==========================================
+func _character_base(_delta: float) -> void:
+	if is_attacking:
+		velocity = Vector2.ZERO
+	else:
+		var direction: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+		if direction != Vector2.ZERO:
+			velocity = direction * move_speed
+			# 🎵 播放脚步声逻辑... (保留你原有的 step_audio 逻辑)
+			step_timer -= _delta
+			if step_timer <= 0.0:
+				if step_audio: step_audio.play()
+				step_timer = STEP_INTERVAL 
+		else:
+			velocity = Vector2.ZERO
+			step_timer = 0.0 
+			
+	move_and_slide()
+	
+	# --- 🌟 解决攻击范围不转的世纪难题 ---
+	var area_attack_node = get_node_or_null("AreaAttack") # 获取攻击范围的父节点
+	
+	var state_name = "Idle"
+	var file_prefix = "Idle"
+	var target_hframes = 8
+	
+	if is_attacking:
+		file_prefix = "Interact"
+		# ... (保留你原有的攻击动画状态判断)
+	elif velocity != Vector2.ZERO:
+		state_name = "Run"
+		file_prefix = "Run"
+		target_hframes = 6
+		
+		# 🌟 核心修复：不但要翻转图片，还要把攻击框翻转过去！
+		if velocity.x < 0: 
+			sprite.flip_h = true
+			if area_attack_node: area_attack_node.scale.x = -1 # 攻击判定转到左边
+		elif velocity.x > 0: 
+			sprite.flip_h = false
+			if area_attack_node: area_attack_node.scale.x = 1  # 攻击判定转回右边
+	else:
+		state_name = "Idle"
+		file_prefix = "Idle"
+		target_hframes = 8 
+		
+	# ... (保留你下方的换图缓存代码) ...
+
+# ==========================================
+# 💥 7. 伤害与物理碰撞 (强力鉴定系统)
 # ==========================================
 func _on_area_attack_body_entered(body: Node2D) -> void:
 	if body is TileMapLayer or body.is_in_group("player") or body.name == "Player":
 		return
 		
 	if body.has_method("update_health"):
+		
+		# 💡 放宽身份识别：不管 type 大小写，不管名字，只要包含 Tree 就是树！包含 Gold 或是矿！
+		var raw_name = body.name.to_lower()
+		var raw_type = ""
+		if "type" in body: raw_type = str(body.type).to_lower()
+			
+		var is_tree = ("tree" in raw_type or "tree" in raw_name)
+		var is_rock = ("gold" in raw_type or "rock" in raw_type or "gold" in raw_name or "rock" in raw_name)
+		
+		# 🛡️ 职业门槛
+		if is_tree and not "_Axe" in current_weapon_suffix:
+			print("❌ 砍树必须用【斧头】！")
+			return 
+		if is_rock and not "_Pickaxe" in current_weapon_suffix:
+			print("❌ 挖矿必须用【镐头】！")
+			return 
+			
 		var damage = 1 
 		body.update_health(damage)
 		
-		if "_Axe" in current_weapon_suffix or "_Hammer" in current_weapon_suffix:
+		if "_Axe" in current_weapon_suffix:
 			_play_sfx(sfx_wood) 
 		elif "_Pickaxe" in current_weapon_suffix:
 			_play_sfx(sfx_stone)
