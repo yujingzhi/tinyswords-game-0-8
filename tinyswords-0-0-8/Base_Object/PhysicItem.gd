@@ -1,12 +1,12 @@
 extends RigidBody2D
+class_name PhysicItem # 注册全局类名
 
 # --- ⚙️ 配置区域 ---
 @export_category("Drop Settings")
-# 🔥🔥🔥 重点修改：增加了 setget 逻辑 🔥🔥🔥
-# 意思是：只要有人改了这个名字，立刻执行 set_item_type 函数刷新图片
+# 🔥 重点逻辑：setget。只要外部(如 object_base)修改了它的值，立刻触发 set_item_type 刷新图片
 @export var item_type: String = "wood": set = set_item_type
 
-# 预加载图片
+# 预加载图片资源，避免游戏运行时卡顿
 var texture_wood = preload("res://Base_Object/Wood_Resource.png")
 var texture_gold = preload("res://Base_Object/Gold_Resource.png")
 
@@ -14,81 +14,72 @@ var texture_gold = preload("res://Base_Object/Gold_Resource.png")
 @export var sfx_drop: AudioStream   
 @export var sfx_pickup: AudioStream 
 
+# 开关：是否是静态摆放的（地图自带的不乱弹，砍树爆的需要弹跳）
+@export var is_static_spawn: bool = false 
+
 # --- 🔗 节点引用 ---
 @onready var audio_player: AudioStreamPlayer2D = $AudioPlayer
 @onready var sprite: Sprite2D = $Sprite2D
 
-# 开关：是否是静态摆放的
-@export var is_static_spawn: bool = false 
-
 # --- 🚀 1. 初始化 ---
 func _ready() -> void:
-	# 确保一开始图片就是对的
+	# 确保一开始图片就匹配 item_type
 	_refresh_texture()
 	
-	# 如果不是静态摆放的（比如砍树掉出来的），才播放弹跳效果
+	# 如果是爆出来的，就给它一个随机冲力，呈现弹跳散落的物理效果
 	if not is_static_spawn:
-		lock_rotation = true 
+		lock_rotation = true # 锁定旋转，别让木头滚得四脚朝天
 		var random_dir = Vector2(randf_range(-1, 1), randf_range(-1, 1)).normalized()
 		apply_impulse(random_dir * 200.0)
 		
+		# 变大弹出的果冻效果
 		if sprite:
 			sprite.scale = Vector2.ZERO 
 			var tween = create_tween()
-			tween.tween_property(sprite, "scale", Vector2(1, 1), 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-			var jump_tween = create_tween()
-			jump_tween.tween_property(sprite, "offset:y", -45.0, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-			jump_tween.tween_property(sprite, "offset:y", 0.0, 0.3).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+			tween.tween_property(sprite, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
-		if audio_player and sfx_drop:
-			audio_player.stream = sfx_drop
-			audio_player.pitch_scale = randf_range(0.9, 1.1)
-			audio_player.play()
-	else:
-		# 静态摆放的直接显示
-		lock_rotation = true 
-		if sprite: sprite.scale = Vector2(1, 1)
+# 当身份被改写时执行 (Setter)
+func set_item_type(new_type: String) -> void:
+	item_type = new_type
+	# 确保节点已经加载完了再刷新图片，防报错
+	if is_node_ready():
+		_refresh_texture()
 
-# --- 🎨 核心修复：专门负责换图的函数 ---
+# 刷新对应的 UI 图标
 func _refresh_texture() -> void:
-	# 如果 Sprite 还没准备好（比如刚生成的一瞬间），就先不换，等 _ready 也就是出生时再换
-	if not sprite: return
-	
-	if item_type == "wood":
-		sprite.texture = texture_wood
-	elif item_type == "gold":
-		sprite.texture = texture_gold
+	if sprite:
+		if item_type == "gold":
+			sprite.texture = texture_gold
+		else:
+			sprite.texture = texture_wood
 
-# --- 🔄 核心修复：当外部修改 item_type 时触发 ---
-func set_item_type(new_value: String) -> void:
-	item_type = new_value
-	# 每次改名，都尝试刷新一下图片
-	# call_deferred 是为了防止在极短时间内多次修改导致报错，安全第一
-	call_deferred("_refresh_texture")
+# --- 📥 2. 核心交互 (你的碰撞体必须连接这个信号) ---
+# 【导师提示】确保 RigidBody2D 的 Contact Monitor 开启，且 Max Contacts Reported > 0
+func _on_body_entered(body: Node2D) -> void:
+	# 容错：只允许主角触发拾取
+	if body.is_in_group("player") or body.name == "Player":
+		
+		# 🟢 【向上通信哲学】呼叫 interface 大管家，让数据中心去加数字
+		get_tree().call_group("interface", "add_item", item_type, 1)
+		
+		# 播放 "+1" 悬浮字特效
+		spawn_floating_text()
+		
+		# 播放拾取音效 (稍微改变音调，避免重复听觉得烦)
+		if audio_player and sfx_pickup:
+			audio_player.stream = sfx_pickup
+			audio_player.pitch_scale = randf_range(1.1, 1.3)
+			audio_player.play()
+		
+		# 将物体吸向玩家并删除
+		_animate_pickup_and_free(body)
 
-# --- 2. 拾取逻辑 (保持不变) ---
-func _on_area_2d_body_entered(body: Node2D) -> void:
-	if body.is_in_group("peao") or body.name == "peao":
-		_collect_item(body)
-
-func _collect_item(target: Node2D) -> void:
-	$Area2D.set_deferred("monitoring", false)
-	set_deferred("freeze", true)
-	set_deferred("linear_velocity", Vector2.ZERO)
-	
-	# 通知背包
-	get_tree().call_group("interface", "add_item", item_type, 1)
-	
-	# 特效
-	spawn_floating_text()
-	
-	if audio_player and sfx_pickup:
-		audio_player.stream = sfx_pickup; audio_player.pitch_scale = randf_range(1.1, 1.3); audio_player.play()
-	
-	_animate_pickup_and_free(target)
-
-# --- 3. 动画与特效 (保持不变) ---
+# --- ✨ 3. 动画与特效 ---
 func _animate_pickup_and_free(target: Node2D) -> void:
+	# 关键：马上冻结物理，防止因为动画延迟导致被重复拾取 2 次
+	set_deferred("freeze", true) 
+	
+	# 被吸走并消失的动画
 	var tween = create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(self, "global_position", target.global_position, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
@@ -105,12 +96,13 @@ func spawn_floating_text() -> void:
 	settings.outline_size = 4                
 	settings.outline_color = Color.BLACK      
 	label.label_settings = settings
-	label.z_index = 100 
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	get_tree().root.add_child(label)
-	label.global_position = global_position + Vector2(-20, -45)
-	var tween = label.create_tween()
+	
+	# 加到场景最外层，防止跟随物体移动
+	get_tree().current_scene.add_child(label)
+	label.global_position = global_position
+	
+	var tween = create_tween()
 	tween.set_parallel(true)
-	tween.tween_property(label, "global_position:y", label.global_position.y - 40, 0.6).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.tween_property(label, "modulate:a", 0.0, 0.3).set_delay(0.3)
+	tween.tween_property(label, "global_position:y", label.global_position.y - 30, 0.5)
+	tween.tween_property(label, "modulate:a", 0.0, 0.5)
 	tween.chain().tween_callback(label.queue_free)

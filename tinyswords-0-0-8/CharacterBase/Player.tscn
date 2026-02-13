@@ -387,6 +387,7 @@ texture = ExtResource("2_556l4")
 hframes = 6
 
 [node name="Colisao" parent="." index="1" unique_id=1595613900]
+y_sort_enabled = true
 scale = Vector2(1, 1.0906487)
 shape = SubResource("CapsuleShape2D_y2huk")
 
