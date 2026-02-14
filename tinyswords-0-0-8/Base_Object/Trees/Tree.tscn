@@ -452,7 +452,6 @@ _data = {
 y_sort_enabled = true
 collision_layer = 4
 collision_mask = 0
-object_type = "_Tree"
 drop_item_scene = ExtResource("2_m4jyd")
 drop_item_texture = ExtResource("3_m4jyd")
 

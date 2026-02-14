@@ -63,31 +63,26 @@ func update_health(damage: int) -> void:
 
 # --- 💀 死亡逻辑 (终极完整版) ---
 func die() -> void:
-	print("💀 物体死亡: ", name, " | 准备掉落类型: ", drop_item_type)
+	print("💀 物体死亡: ", name, " | 准备掉落: ", drop_item_type)
 	
-	# 1. 安全防错：检查你在编辑器里有没有配置掉落预制体
-	if is_instance_valid(drop_item_scene):
-		# 2. 随机决定这次掉落几个物品 (比如 1 到 3 个)
-		var drop_count: int = randi_range(min_drop, max_drop)
-		
-		# 3. 循环生成掉落物
-		for i: int in range(drop_count):
-			var drop_instance: Node2D = drop_item_scene.instantiate() as Node2D
-			if is_instance_valid(drop_instance):
-				# 【架构规范】将掉落物挂载到当前物体所在的父节点（通常是大地图 Level 层）
-				# 这样树消失了，掉落物还能留在地上
+	if drop_item_scene:
+		var final_drop_count = randi_range(min_drop, max_drop)
+		for i in range(final_drop_count):
+			var drop_instance = drop_item_scene.instantiate()
+			if drop_instance:
 				get_parent().add_child(drop_instance)
 				
-				# 让掉落物在物体中心点周围产生一点随机偏移，防止所有掉落物完美重叠在一起
-				var random_offset: Vector2 = Vector2(randf_range(-15.0, 15.0), randf_range(-15.0, 15.0))
+				# ✨✨✨ 核心解法 1：暴力注入身份 ✨✨✨
+				# 既然没有 initialize_item，我们直接给它的属性赋值！
+				if "item_type" in drop_instance:
+					drop_instance.item_type = self.drop_item_type 
+				
+				# ✨✨✨ 核心解法 2：强制它立刻换衣服 ✨✨✨
+				# 防止它拿着 "gold" 的身份还穿着 "wood" 的图
+				if drop_instance.has_method("_refresh_texture"):
+					drop_instance._refresh_texture()
+					
+				var random_offset = Vector2(randf_range(-15.0, 15.0), randf_range(-15.0, 15.0))
 				drop_instance.global_position = global_position + random_offset
 				
-				# 【进阶联动】如果你在 PhysicItem 里写了接收贴图或类型的函数，可以在这里传给它
-				# 例如：如果你的 PhysicItem 有初始化方法，可以取消下面这行的注释并修改为你实际的方法名
-				# if drop_instance.has_method("initialize_item"):
-				# 	drop_instance.initialize_item(drop_item_type, drop_item_texture)
-	else:
-		push_error("【导师警告】" + name + " 没有配置 Drop Item Scene！请去编辑器右侧检查器挂载掉落物！")
-
-	# 4. 掉落完成后，彻底销毁被砍伐的树木/矿石
 	queue_free()
