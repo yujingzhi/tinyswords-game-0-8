@@ -24,10 +24,10 @@ class_name CharacterBase
 # ✨ 优化：使用强类型的枚举来定义工具
 enum ToolType { 
 	HAND = -1, 
-	SWORD = 0, 
+	HAMMER = 0, 
 	AXE = 1, 
-	PICKAXE = 2, 
-	HAMMER = 3 
+	KNIFE = 2, 
+	PICKAXE = 3 
 }
 
 
@@ -285,14 +285,16 @@ func _on_area_attack_body_entered(body: Node2D) -> void:
 				if target_type == "tree": can_damage = true
 			ToolType.PICKAXE, ToolType.HAMMER:
 				if target_type == "rock" or target_type == "gold": can_damage = true
-			ToolType.SWORD:
+			ToolType.KNIFE:
 				if target_type == "enemy": can_damage = true # 为未来的敌人预留
 				
 		# 3. 结算伤害
 		if can_damage:
 			# 假设默认造成 1 点伤害。如果你的主角有攻击力变量，请替换为 attack_damage
 			interactable.update_health(1) 
-			
-			# (可选) 在这里根据工具播放你提前 @export 好的对应音效，比如 sfx_wood 或 sfx_stone
+			if target_type == "tree":
+				_play_sfx(sfx_wood)
+			elif target_type == "rock" or target_type == "gold":
+				_play_sfx(sfx_stone)
 		else:
 			print("【导师提示】工具不匹配！你拿着工具ID: ", current_weapon_index, " 敲不动 ", target_type)
