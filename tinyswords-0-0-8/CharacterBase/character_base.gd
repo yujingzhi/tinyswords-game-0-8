@@ -82,36 +82,38 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("scroll_up"): _cycle_weapon(1)
 	elif event.is_action_pressed("scroll_down"): _cycle_weapon(-1)
 	
-	elif event.is_action_pressed("attack") and current_weapon_index != -1:
+	elif event.is_action_pressed("attack") and current_weapon_index != ToolType.HAND:
 		_start_attack()
 
 # ==========================================
 # 🔄 4. 武器切换逻辑
 # ==========================================
 func _toggle_weapon(target_index: int) -> void:
-	if current_weapon_index == target_index:
-		current_weapon_index = -1 
+	var target_tool = target_index as ToolType
+	if current_weapon_index == target_tool:
+		current_weapon_index = ToolType.HAND
 	else:
-		current_weapon_index = target_index
+		current_weapon_index = target_tool
 	_update_weapon_state()
 
 func _cycle_weapon(direction: int) -> void:
-	current_weapon_index += direction
-	if current_weapon_index >= MAX_WEAPON_COUNT:
-		current_weapon_index = -1 
-	elif current_weapon_index < -1:
-		current_weapon_index = MAX_WEAPON_COUNT - 1 
+	var next_index = int(current_weapon_index) + direction
+	if next_index >= MAX_WEAPON_COUNT:
+		next_index = int(ToolType.HAND)
+	elif next_index < int(ToolType.HAND):
+		next_index = MAX_WEAPON_COUNT - 1
+	current_weapon_index = next_index as ToolType
 	_update_weapon_state()
 
 func _update_weapon_state() -> void:
 	get_tree().call_group("interface", "update_weapon_indicator", current_weapon_index)
 	
 	match current_weapon_index:
-		-1: current_weapon_suffix = ""; _play_sfx(sfx_hand)
-		0: current_weapon_suffix = "_Hammer"; _play_sfx(sfx_heavy)
-		1: current_weapon_suffix = "_Axe"; _play_sfx(sfx_sharp)
-		2: current_weapon_suffix = "_Knife"; _play_sfx(sfx_sharp)
-		3: current_weapon_suffix = "_Pickaxe"; _play_sfx(sfx_sharp)
+		ToolType.HAND: current_weapon_suffix = ""; _play_sfx(sfx_hand)
+		ToolType.HAMMER: current_weapon_suffix = "_Hammer"; _play_sfx(sfx_heavy)
+		ToolType.AXE: current_weapon_suffix = "_Axe"; _play_sfx(sfx_sharp)
+		ToolType.KNIFE: current_weapon_suffix = "_Knife"; _play_sfx(sfx_sharp)
+		ToolType.PICKAXE: current_weapon_suffix = "_Pickaxe"; _play_sfx(sfx_sharp)
 
 func _play_sfx(stream: AudioStream) -> void:
 	if fx_audio and stream:
@@ -212,61 +214,16 @@ func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 			attack_area_collision.disabled = true
 
 # ==========================================
-# 🏃‍♂️ 7. 物理移动与渲染引擎
-# ==========================================
-func _character_base(_delta: float) -> void:
-	if is_attacking:
-		velocity = Vector2.ZERO
-	else:
-		var direction: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
-		if direction != Vector2.ZERO:
-			velocity = direction * move_speed
-			# 🎵 播放脚步声逻辑... (保留你原有的 step_audio 逻辑)
-			step_timer -= _delta
-			if step_timer <= 0.0:
-				if step_audio: step_audio.play()
-				step_timer = STEP_INTERVAL 
-		else:
-			velocity = Vector2.ZERO
-			step_timer = 0.0 
-			
-	move_and_slide()
-	
-	# --- 🌟 解决攻击范围不转的世纪难题 ---
-	var area_attack_node = get_node_or_null("AreaAttack") # 获取攻击范围的父节点
-	
-	var state_name = "Idle"
-	var file_prefix = "Idle"
-	var target_hframes = 8
-	
-	if is_attacking:
-		file_prefix = "Interact"
-		# ... (保留你原有的攻击动画状态判断)
-	elif velocity != Vector2.ZERO:
-		state_name = "Run"
-		file_prefix = "Run"
-		target_hframes = 6
-		
-		# 🌟 核心修复：不但要翻转图片，还要把攻击框翻转过去！
-		if velocity.x < 0: 
-			sprite.flip_h = true
-			if area_attack_node: area_attack_node.scale.x = -1 # 攻击判定转到左边
-		elif velocity.x > 0: 
-			sprite.flip_h = false
-			if area_attack_node: area_attack_node.scale.x = 1  # 攻击判定转回右边
-	else:
-		state_name = "Idle"
-		file_prefix = "Idle"
-		target_hframes = 8 
-		
-	# ... (保留你下方的换图缓存代码) ...
-
-# ==========================================
 # 💥 7. 伤害与物理碰撞 (强力鉴定系统)
 # ==========================================
 func _on_area_attack_body_entered(body: Node2D) -> void:
 	# 1. 快速过滤自己或地图层，避免误伤
 	if body == self or body is TileMapLayer:
+		return
+	var sheep: Sheep = body as Sheep
+	if is_instance_valid(sheep):
+		if current_weapon_index == ToolType.KNIFE:
+			sheep.take_damage(1)
 		return
 		
 	# ✨ 核心优化：多态转换。如果 body 不是 ObjectBase 的子类，这里会返回 null

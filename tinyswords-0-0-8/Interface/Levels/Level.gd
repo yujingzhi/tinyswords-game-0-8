@@ -7,17 +7,22 @@ class_name Level
 
 # 2. 你想生成多少个物体？
 @export var total_objects: int = 40
+@export var sheep_scene: PackedScene
+@export var total_sheep: int = 6
+@export var sheep_roam_cell_radius: int = 4
 
 # --- 节点引用 ---
 # 注意：路径必须和你场景里的实际名字一致！
 # 这是你在 Terrain 里画了蓝色方块的那一层 (通常设为透明)
 @onready var spawn_layer: TileMapLayer = $Terrain/SpawnLayer
+@onready var sheep_spawn_layer: TileMapLayer = $Terrain/SheepSpawnLayer
 
 # 这是用来存放生成物体的容器 (开启了 Y-Sort 的那个 Node2D)
 @onready var objects_container: Node2D = $Objects
 
 func _ready() -> void:
 	spawn_objects()
+	spawn_sheep()
 	
 	# 🔥🔥🔥 启动延迟体检 🔥🔥🔥
 	print("\n================ 🕵️‍♂️ 游戏体检开始 ================")
@@ -118,3 +123,31 @@ func spawn_objects() -> void:
 		spawned_count += 1
 		
 	print("生成完毕！共生成了 ", spawned_count, " 个物体。")
+
+func spawn_sheep() -> void:
+	var available_cells: Array[Vector2i] = sheep_spawn_layer.get_used_cells()
+	if available_cells.is_empty():
+		print("错误：SheepSpawnLayer 没有画任何格子！无法生成羊。")
+		return
+		
+	if sheep_scene == null:
+		print("错误：没有在 Inspector 里给 Sheep Scene 赋值！")
+		return
+		
+	var occupied_cells: Array[Vector2i] = []
+	var spawned_count: int = 0
+	var target_total = min(total_sheep, available_cells.size())
+	
+	while spawned_count < target_total:
+		var random_cell = available_cells.pick_random()
+		if random_cell in occupied_cells:
+			continue
+			
+		var sheep_instance = sheep_scene.instantiate()
+		sheep_instance.position = sheep_spawn_layer.map_to_local(random_cell)
+		objects_container.add_child(sheep_instance)
+		if sheep_instance.has_method("setup_roam"):
+			sheep_instance.setup_roam(sheep_spawn_layer, random_cell, sheep_roam_cell_radius)
+		
+		occupied_cells.append(random_cell)
+		spawned_count += 1

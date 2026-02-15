@@ -268,3 +268,7 @@ tile_set = SubResource("TileSet_0j3ho")
 
 [node name="SpawnLayer" type="TileMapLayer" parent="." unique_id=837013576]
 tile_set = SubResource("TileSet_vp0y8")
+
+[node name="SheepSpawnLayer" type="TileMapLayer" parent="." unique_id=645980507]
+visible = false
+tile_set = SubResource("TileSet_vp0y8")

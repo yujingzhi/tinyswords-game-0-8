@@ -13,7 +13,8 @@ class_name Interface # 注册大管家
 # 字典：教 UI 如何将 "wood" 映射成对应的图片
 @onready var item_icons: Dictionary = {
 	"wood": preload("res://Base_Object/Wood_Resource.png"), 
-	"gold": preload("res://Base_Object/Gold_Resource.png")
+	"gold": preload("res://Base_Object/Gold_Resource.png"),
+	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png")
 }
 
 # --- 🌟 数据中枢 ---
@@ -37,6 +38,10 @@ func _ready() -> void:
 		inventory_panel.modulate.a = 0
 		# 游戏开始时刷新一次空背包
 		refresh_inventory_ui()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("toggle_inventory"):
+		_on_bag_button_pressed()
 
 # --- 📥 数据更新与接收 ---
 # 这个方法会被外界（如 PhysicItem）呼叫

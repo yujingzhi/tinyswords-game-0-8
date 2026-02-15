@@ -70,7 +70,7 @@ func die() -> void:
 		for i in range(final_drop_count):
 			var drop_instance = drop_item_scene.instantiate()
 			if drop_instance:
-				get_parent().add_child(drop_instance)
+				get_parent().call_deferred("add_child", drop_instance)
 				
 				# ✨✨✨ 核心解法 1：暴力注入身份 ✨✨✨
 				# 既然没有 initialize_item，我们直接给它的属性赋值！
@@ -80,9 +80,9 @@ func die() -> void:
 				# ✨✨✨ 核心解法 2：强制它立刻换衣服 ✨✨✨
 				# 防止它拿着 "gold" 的身份还穿着 "wood" 的图
 				if drop_instance.has_method("_refresh_texture"):
-					drop_instance._refresh_texture()
+					drop_instance.call_deferred("_refresh_texture")
 					
 				var random_offset = Vector2(randf_range(-15.0, 15.0), randf_range(-15.0, 15.0))
-				drop_instance.global_position = global_position + random_offset
+				drop_instance.set_deferred("global_position", global_position + random_offset)
 				
 	queue_free()

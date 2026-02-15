@@ -13,7 +13,8 @@ class_name PhysicItem
 # 🌟 优化 2：物品图鉴字典！彻底告别 if-else，扩展性拉满！
 const ITEM_TEXTURES: Dictionary = {
 	"wood": preload("res://Base_Object/Wood_Resource.png"),
-	"gold": preload("res://Base_Object/Gold_Resource.png")
+	"gold": preload("res://Base_Object/Gold_Resource.png"),
+	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png")
 	# 未来扩展示范： "stone": preload("res://Base_Object/Stone.png")
 }
 
@@ -27,7 +28,7 @@ const ITEM_TEXTURES: Dictionary = {
 @onready var pickup_area: Area2D = $Area2D 
 
 func _ready() -> void:
-	collision_mask = 1 
+	set_deferred("collision_mask", 1) 
 	
 	if is_instance_valid(pickup_area) and not pickup_area.body_entered.is_connected(_on_pickup_area_body_entered):
 		pickup_area.body_entered.connect(_on_pickup_area_body_entered)
@@ -35,12 +36,12 @@ func _ready() -> void:
 	_refresh_texture()
 	
 	if not is_static_spawn:
-		lock_rotation = true 
+		set_deferred("lock_rotation", true) 
 		# 🌟 优化 3：全面补充强类型声明 (Vector2, Tween)
 		var random_dir: Vector2 = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)).normalized()
 		
 		# 🌟 优化 4：Godot 4 推荐使用 apply_central_impulse 直接作用于质心
-		apply_central_impulse(random_dir * 200.0) 
+		call_deferred("apply_central_impulse", random_dir * 200.0) 
 		
 		if is_instance_valid(sprite):
 			sprite.scale = Vector2.ZERO 
