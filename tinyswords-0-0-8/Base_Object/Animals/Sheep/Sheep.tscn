@@ -1,17 +1,17 @@
 [gd_scene format=3 uid="uid://cf1p5y0j3g35a"]
 
-[ext_resource type="Script" uid="uid://c85xw2y8ryg14" path="res://Base_Object/Animals/Sheep/Sheep.gd" id="1_ewk04"]
+[ext_resource type="Script" uid="uid://hfqdk1kygaqd" path="res://Base_Object/Animals/Sheep/Sheep.gd" id="1_ewk04"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_8ybbn"]
 radius = 8.0
 
-[node name="Sheep" type="CharacterBody2D"]
+[node name="Sheep" type="CharacterBody2D" unique_id=812816391]
 y_sort_enabled = true
 script = ExtResource("1_ewk04")
 
-[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=419102473]
 position = Vector2(0, -6)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=547708242]
 position = Vector2(0, 2)
 shape = SubResource("CircleShape2D_8ybbn")

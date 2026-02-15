@@ -19,6 +19,7 @@ class_name CharacterBase
 @export var sfx_stone: AudioStream            
 @export var sfx_heavy: AudioStream            
 @export var sfx_sharp: AudioStream            
+@export var sfx_knife: AudioStream            
 @export var sfx_hand: AudioStream             
 
 # ✨ 优化：使用强类型的枚举来定义工具
@@ -112,7 +113,7 @@ func _update_weapon_state() -> void:
 		ToolType.HAND: current_weapon_suffix = ""; _play_sfx(sfx_hand)
 		ToolType.HAMMER: current_weapon_suffix = "_Hammer"; _play_sfx(sfx_heavy)
 		ToolType.AXE: current_weapon_suffix = "_Axe"; _play_sfx(sfx_sharp)
-		ToolType.KNIFE: current_weapon_suffix = "_Knife"; _play_sfx(sfx_sharp)
+		ToolType.KNIFE: current_weapon_suffix = "_Knife"; _play_sfx(sfx_knife if sfx_knife else sfx_sharp)
 		ToolType.PICKAXE: current_weapon_suffix = "_Pickaxe"; _play_sfx(sfx_sharp)
 
 func _play_sfx(stream: AudioStream) -> void:
@@ -206,6 +207,11 @@ func _start_attack() -> void:
 	is_attacking = true
 	if attack_area_collision:
 		attack_area_collision.disabled = false 
+	match current_weapon_index:
+		ToolType.HAMMER:
+			_play_sfx(sfx_heavy)
+		ToolType.KNIFE:
+			_play_sfx(sfx_knife if sfx_knife else sfx_sharp)
 
 func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 	if "Attack" in anim_name:

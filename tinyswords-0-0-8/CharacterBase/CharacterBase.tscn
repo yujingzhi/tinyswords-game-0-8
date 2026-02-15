@@ -5,6 +5,7 @@
 [ext_resource type="AudioStream" uid="uid://dh12pywne8kri" path="res://Audio/SFX_Stone_Mine.tres" id="3_f6dve"]
 [ext_resource type="AudioStream" uid="uid://brplwy3rigo13" path="res://Audio/SFX_Weapon_Heavy.tres" id="4_s6nxa"]
 [ext_resource type="AudioStream" uid="uid://cx8vw11h3k880" path="res://Audio/SFX_Weapon_Sharp.tres" id="5_3qj3d"]
+[ext_resource type="AudioStream" uid="uid://dy7ip6fi5rcyy" path="res://Audio/knifeSlice.ogg" id="6_knife"]
 [ext_resource type="AudioStream" uid="uid://cgouleaf0dt0s" path="res://Audio/SFX_Weapon_Hand.tres" id="6_usjsn"]
 
 [node name="CharacterBase" type="CharacterBody2D" unique_id=576773321 node_paths=PackedStringArray("sprite", "animation_player")]
@@ -15,6 +16,7 @@ sfx_wood = ExtResource("2_n37a5")
 sfx_stone = ExtResource("3_f6dve")
 sfx_heavy = ExtResource("4_s6nxa")
 sfx_sharp = ExtResource("5_3qj3d")
+sfx_knife = ExtResource("6_knife")
 sfx_hand = ExtResource("6_usjsn")
 
 [node name="Textura" type="Sprite2D" parent="." unique_id=1736314301]
