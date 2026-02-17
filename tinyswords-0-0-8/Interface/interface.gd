@@ -5,10 +5,9 @@ class_name Interface # 注册大管家
 @onready var slots_container: HBoxContainer = $Avatar/HBoxContainer
 @onready var inventory_panel: TileMapLayer = $TileMapLayer
 @onready var grid_container: GridContainer = $TileMapLayer/InventoryGrid
-@onready var player_health_container: Control = $PlayerHealthBar
-@onready var player_stamina_container: Control = $PlayerStaminaBar
 @onready var player_health_bar: TextureProgressBar = $PlayerHealthBar/Fill
 @onready var player_stamina_bar: TextureProgressBar = $PlayerStaminaBar/Fill
+@onready var quickbar_container: HBoxContainer = $QuickBar
 
 # --- 🔥 配置区域 ---
 # 【检查！】必须在编辑器里把 InventorySlot.tscn 拖给它
@@ -20,14 +19,22 @@ class_name Interface # 注册大管家
 	"gold": preload("res://Base_Object/Gold_Resource.png"),
 	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png")
 }
+var consume_fx_defs: Array[Dictionary] = [
+	{"texture": preload("res://Assets/FX/Particles/Fire_01.png"), "frames": 8},
+	{"texture": preload("res://Assets/FX/Particles/Fire_02.png"), "frames": 10},
+	{"texture": preload("res://Assets/FX/Particles/Fire_03.png"), "frames": 12},
+	{"texture": preload("res://Assets/FX/Particles/Water Splash.png"), "frames": 9}
+]
 
 # --- 🌟 数据中枢 ---
 var origin_pos: Vector2
 var total_slots: int = 21 # 背包总共有多少格子
 const SLOT_SIZE = Vector2(96, 96)
+const QUICKBAR_SIZE = Vector2(72, 72)
 
 # 💡【核心数据】这是你真正的背包，所有加减全在这发生
 var inventory_data: Dictionary = {} 
+var quickbar_items: Array[String] = ["", "", "", ""]
 
 # --- 🚀 初始化 ---
 func _ready() -> void:
@@ -42,11 +49,24 @@ func _ready() -> void:
 		inventory_panel.modulate.a = 0
 		# 游戏开始时刷新一次空背包
 		refresh_inventory_ui()
+	_refresh_quickbar_ui()
 	call_deferred("_sync_player_bars")
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		if inventory_panel and inventory_panel.visible and inventory_panel.modulate.a > 0.1:
+			_close_inventory_animation()
+		return
 	if event.is_action_pressed("toggle_inventory"):
 		_on_bag_button_pressed()
+	elif event.is_action_pressed("quickbar_1"):
+		use_quick_slot(0)
+	elif event.is_action_pressed("quickbar_2"):
+		use_quick_slot(1)
+	elif event.is_action_pressed("quickbar_3"):
+		use_quick_slot(2)
+	elif event.is_action_pressed("quickbar_4"):
+		use_quick_slot(3)
 
 # --- 📥 数据更新与接收 ---
 # 这个方法会被外界（如 PhysicItem）呼叫
@@ -75,6 +95,8 @@ func refresh_inventory_ui() -> void:
 	for i in range(total_slots):
 		var slot = slot_scene.instantiate() as InventorySlot
 		slot.custom_minimum_size = SLOT_SIZE 
+		slot.slot_role = "inventory"
+		slot.slot_index = i
 		grid_container.add_child(slot)
 		
 		# 4. 判断逻辑
@@ -83,10 +105,11 @@ func refresh_inventory_ui() -> void:
 			var key = item_keys[i]
 			var icon = item_icons.get(key, null)
 			var count = inventory_data[key]
-			slot.update_slot(icon, count)
+			slot.update_slot(icon, count, key)
 		else:
 			# 种类发完了，剩下的全是空格子
-			slot.update_slot(null, 0)
+			slot.update_slot(null, 0, "")
+	_refresh_quickbar_ui()
 
 # --- ⚔️ 武器栏逻辑 ---
 # --- ⚔️ 武器栏高级视觉交互 ---
@@ -141,13 +164,124 @@ func _sync_player_bars() -> void:
 		if max_stamina != null and current_stamina != null:
 			update_player_stamina(current_stamina, max_stamina)
 
-func _on_hint_button_pressed() -> void:
-	if player_health_container:
-		player_health_container.scale = Vector2(1.05, 1.05)
-		create_tween().tween_property(player_health_container, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_SPRING)
-	if player_stamina_container:
-		player_stamina_container.scale = Vector2(1.05, 1.05)
-		create_tween().tween_property(player_stamina_container, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_SPRING)
+func _refresh_quickbar_ui() -> void:
+	if not quickbar_container:
+		return
+	var slots = quickbar_container.get_children()
+	for i in range(slots.size()):
+		var slot = slots[i] as InventorySlot
+		if slot == null:
+			continue
+		slot.custom_minimum_size = QUICKBAR_SIZE
+		slot.slot_role = "quick"
+		slot.slot_index = i
+		var item_type = quickbar_items[i]
+		if item_type != "":
+			var icon = item_icons.get(item_type, null)
+			var count = inventory_data.get(item_type, 0)
+			slot.update_slot(icon, count, item_type)
+		else:
+			slot.update_slot(null, 0, "")
+
+func assign_quick_slot(index: int, item_type: String) -> void:
+	if index < 0 or index >= quickbar_items.size():
+		return
+	quickbar_items[index] = item_type
+	_refresh_quickbar_ui()
+	print("快捷栏设置 | 格子=", index + 1, " | 类型=", item_type)
+
+func use_quick_slot(index: int) -> void:
+	if index < 0 or index >= quickbar_items.size():
+		return
+	var item_type = quickbar_items[index]
+	if item_type == "meat":
+		var ok = _consume_meat("quick_slot")
+		if ok:
+			print("快捷栏消耗成功 | 格子=", index + 1, " | 类型=meat")
+	else:
+		if item_type != "":
+			print("快捷栏未实现消耗 | 格子=", index + 1, " | 类型=", item_type)
+
+func _get_player() -> Node:
+	return get_tree().get_first_node_in_group("peao")
+
+func _consume_meat(source: String) -> bool:
+	if not inventory_data.has("meat") or inventory_data["meat"] <= 0:
+		print("肉消耗失败 | 原因=无库存 | 来源=", source)
+		return false
+	var player = _get_player()
+	if player == null:
+		print("肉消耗失败 | 原因=无主角 | 来源=", source)
+		return false
+	var max_health = player.get("max_health")
+	var current_health = player.get("current_health")
+	if max_health == null or current_health == null:
+		print("肉消耗失败 | 原因=缺少血量数据 | 来源=", source)
+		return false
+	if current_health >= max_health:
+		print("肉消耗失败 | 原因=已满血 | 来源=", source)
+		return false
+	inventory_data["meat"] -= 1
+	var heal_amount = max_health * 0.5
+	var new_health = min(float(current_health) + heal_amount, float(max_health))
+	player.set("current_health", int(round(new_health)))
+	update_player_health(int(round(new_health)), max_health)
+	_play_consume_animation()
+	var fx = _pick_consume_fx()
+	if not fx.is_empty():
+		_spawn_world_fx(fx["texture"], int(fx["frames"]), player.global_position + Vector2(0, -12), Vector2(1.0, 1.0))
+	refresh_inventory_ui()
+	print("肉消耗成功 | 来源=", source, " | 治疗=", heal_amount, " | HP=", int(round(new_health)), "/", max_health, " | MeatLeft=", inventory_data["meat"])
+	return true
+
+func _pick_consume_fx() -> Dictionary:
+	if consume_fx_defs.is_empty():
+		return {}
+	return consume_fx_defs.pick_random()
+
+func _spawn_world_fx(texture: Texture2D, frame_count: int, fx_position: Vector2, fx_scale: Vector2) -> void:
+	if texture == null or frame_count <= 0:
+		return
+	var fx_sprite = AnimatedSprite2D.new()
+	fx_sprite.sprite_frames = _build_fx_frames(texture, frame_count, 12.0)
+	fx_sprite.animation = "fx"
+	fx_sprite.global_position = fx_position
+	fx_sprite.scale = fx_scale
+	fx_sprite.z_index = 20
+	var root = get_tree().current_scene
+	if root:
+		root.add_child(fx_sprite)
+	fx_sprite.play()
+	if not fx_sprite.animation_finished.is_connected(fx_sprite.queue_free):
+		fx_sprite.animation_finished.connect(fx_sprite.queue_free)
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(fx_sprite, "scale", fx_scale * 1.25, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(fx_sprite, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(fx_sprite.queue_free)
+
+func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> SpriteFrames:
+	var frames = SpriteFrames.new()
+	frames.add_animation("fx")
+	var frame_width = texture.get_width() / float(frame_count)
+	var frame_height = texture.get_height()
+	for i in range(frame_count):
+		var atlas = AtlasTexture.new()
+		atlas.atlas = texture
+		atlas.region = Rect2(i * frame_width, 0, frame_width, frame_height)
+		frames.add_frame("fx", atlas)
+	frames.set_animation_speed("fx", fps)
+	frames.set_animation_loop("fx", false)
+	return frames
+
+func _play_consume_animation() -> void:
+	if not player_health_bar:
+		return
+	var base_scale = player_health_bar.scale
+	player_health_bar.scale = base_scale
+	var tween = create_tween()
+	tween.tween_property(player_health_bar, "scale", base_scale * 1.08, 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(player_health_bar, "scale", base_scale, 0.2).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
 
 # --- 🎒 背包开关动画逻辑 (保持你的原有代码不变) ---
 func _on_bag_button_pressed() -> void:
@@ -155,6 +289,7 @@ func _on_bag_button_pressed() -> void:
 	if inventory_panel.visible and inventory_panel.modulate.a > 0.1:
 		_close_inventory_animation()
 	else:
+		_consume_meat("open_inventory")
 		_open_inventory_animation()
 
 func _open_inventory_animation():

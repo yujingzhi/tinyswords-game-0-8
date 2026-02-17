@@ -12,6 +12,8 @@ func setup(dir: Vector2, new_speed: float, new_damage: int) -> void:
 	damage = new_damage
 
 func _ready() -> void:
+	monitoring = true
+	monitorable = true
 	if direction == Vector2.ZERO:
 		direction = Vector2.RIGHT
 	rotation = direction.angle()
@@ -21,6 +23,24 @@ func _physics_process(delta: float) -> void:
 	life_time -= delta
 	if life_time <= 0.0:
 		queue_free()
+		return
+	var bodies = get_overlapping_bodies()
+	for body in bodies:
+		if body and body.is_in_group("peao"):
+			if body.has_method("take_damage"):
+				body.take_damage(damage)
+				print("Arrow命中主角 | 伤害=", damage, " | ArrowPos=", global_position)
+			queue_free()
+			return
+	var areas = get_overlapping_areas()
+	for area in areas:
+		if area and area.is_in_group("player_hurtbox"):
+			var player = area.get_parent()
+			if player and player.has_method("take_damage"):
+				player.take_damage(damage)
+				print("Arrow命中Hurtbox | 伤害=", damage, " | ArrowPos=", global_position)
+			queue_free()
+			return
 
 func _on_body_entered(body: Node) -> void:
 	if body == null:
@@ -31,4 +51,13 @@ func _on_body_entered(body: Node) -> void:
 		queue_free()
 		return
 	if body is TileMapLayer:
+		queue_free()
+
+func _on_area_entered(area: Area2D) -> void:
+	if area == null:
+		return
+	if area.is_in_group("player_hurtbox"):
+		var player = area.get_parent()
+		if player and player.has_method("take_damage"):
+			player.take_damage(damage)
 		queue_free()

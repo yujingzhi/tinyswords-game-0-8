@@ -20,8 +20,6 @@
 [ext_resource type="Texture2D" uid="uid://bonmyftg8twku" path="res://Assets/UI/Bars/BigBar_Fill.png" id="11_bigbar_fill"]
 [ext_resource type="Texture2D" uid="uid://4bsibpswdkdc" path="res://Assets/UI/Bars/SmallBar_Base.png" id="11_smallbar_base"]
 [ext_resource type="Texture2D" uid="uid://dfmcs4vv4joxs" path="res://Assets/UI/Bars/SmallBar_Fill.png" id="11_smallbar_fill"]
-[ext_resource type="Texture2D" uid="uid://dkn6xdti6wt4d" path="res://Assets/UI/Buttons/SmallBlueRoundButton_Pressed.png" id="12_hint_pressed"]
-[ext_resource type="Texture2D" uid="uid://c4ylbin831sed" path="res://Assets/UI/Buttons/SmallBlueRoundButton_Regular.png" id="12_hint_regular"]
 [ext_resource type="Texture2D" uid="uid://br6if61mcsioe" path="res://Interface/Icons/Bag_Icon.png" id="13_eba0h"]
 [ext_resource type="Texture2D" uid="uid://c65fi1y8nwn7k" path="res://Interface/Banners/Banner.png" id="14_5y088"]
 [ext_resource type="Script" uid="uid://c2y6hlp18831o" path="res://Interface/ScaleButton.gd" id="14_f381r"]
@@ -109,26 +107,25 @@ script = ExtResource("2_l3g71")
 slot_scene = ExtResource("7_o153u")
 
 [node name="PlayerHealthBar" type="TextureProgressBar" parent="Interface" unique_id=1226431299]
+clip_contents = true
 custom_minimum_size = Vector2(320, 64)
-offset_left = 122.0
-offset_top = 1.0
-offset_right = 442.0
-offset_bottom = 65.0
+offset_left = 231.0
+offset_top = 6.0
+offset_right = 551.0
+offset_bottom = 70.0
 scale = Vector2(0.5, 0.5)
 nine_patch_stretch = true
+stretch_margin_left = 64
+stretch_margin_right = 64
 texture_under = ExtResource("11_bigbar_base")
 
 [node name="Fill" type="TextureProgressBar" parent="Interface/PlayerHealthBar" unique_id=1106426245]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -76.0
-offset_top = -28.0
-offset_right = 76.0
-offset_bottom = 28.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 52.0
+offset_right = -52.0
 grow_horizontal = 2
 grow_vertical = 2
 nine_patch_stretch = true
@@ -137,58 +134,29 @@ stretch_margin_right = 64
 texture_progress = ExtResource("11_bigbar_fill")
 
 [node name="PlayerStaminaBar" type="TextureProgressBar" parent="Interface" unique_id=1400629351]
+clip_contents = true
 custom_minimum_size = Vector2(320, 64)
-offset_left = 137.0
-offset_top = 30.0
-offset_right = 457.0
-offset_bottom = 94.0
+offset_left = 246.0
+offset_top = 35.0
+offset_right = 566.0
+offset_bottom = 99.0
 scale = Vector2(0.4, 0.4)
 nine_patch_stretch = true
+stretch_margin_left = 64
+stretch_margin_right = 64
 texture_under = ExtResource("11_smallbar_base")
 
 [node name="Fill" type="TextureProgressBar" parent="Interface/PlayerStaminaBar" unique_id=1386259383]
 layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -64.99997
-offset_top = -27.0
-offset_right = 64.99997
-offset_bottom = 27.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 56.0
+offset_right = -56.0
 grow_horizontal = 2
 grow_vertical = 2
 nine_patch_stretch = true
 texture_progress = ExtResource("11_smallbar_fill")
-
-[node name="HintButton" type="TextureButton" parent="Interface" unique_id=161691338]
-offset_left = 286.0
-offset_top = 12.0
-offset_right = 318.0
-offset_bottom = 44.0
-texture_normal = ExtResource("12_hint_regular")
-texture_pressed = ExtResource("12_hint_pressed")
-script = ExtResource("14_f381r")
-
-[node name="Label" type="Label" parent="Interface/HintButton" unique_id=1861392033]
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -6.0
-offset_top = -10.0
-offset_right = 6.0
-offset_bottom = 10.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_type_variation = &"GraphFrameTitleLabel"
-text = "变大"
-label_settings = SubResource("LabelSettings_gweiw")
-horizontal_alignment = 1
-vertical_alignment = 1
 
 [node name="Avatar" type="TextureRect" parent="Interface" unique_id=960806065]
 offset_right = 140.0
@@ -450,6 +418,34 @@ label_settings = SubResource("LabelSettings_gweiw")
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="QuickBar" type="HBoxContainer" parent="Interface" unique_id=2113774042]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 78.0
+offset_top = -60.0
+offset_right = 864.0
+offset_bottom = 132.0
+grow_vertical = 0
+scale = Vector2(0.3, 0.3)
+theme_override_constants/separation = 6
+
+[node name="QuickSlot1" parent="Interface/QuickBar" unique_id=2113774043 instance=ExtResource("7_o153u")]
+custom_minimum_size = Vector2(72, 72)
+layout_mode = 2
+
+[node name="QuickSlot2" parent="Interface/QuickBar" unique_id=2113774044 instance=ExtResource("7_o153u")]
+custom_minimum_size = Vector2(72, 72)
+layout_mode = 2
+
+[node name="QuickSlot3" parent="Interface/QuickBar" unique_id=2113774045 instance=ExtResource("7_o153u")]
+custom_minimum_size = Vector2(72, 72)
+layout_mode = 2
+
+[node name="QuickSlot4" parent="Interface/QuickBar" unique_id=2113774046 instance=ExtResource("7_o153u")]
+custom_minimum_size = Vector2(72, 72)
+layout_mode = 2
+
 [node name="TileMapLayer" type="TileMapLayer" parent="Interface" unique_id=1070063934]
 position = Vector2(268, 140)
 tile_map_data = PackedByteArray("AAACAAIAAAAMAAwAAAACAAMAAAAMAAwAAAAEAAMAAAAMAAwAAAAEAAIAAAAMAAwAAAADAAIAAAAMAAwAAAADAAMAAAAMAAwAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAwAAAAAAAIAAAAAAAwAAAABAAAAAAAMAAAAAAABAAEAAAAMAAwAAAABAAIAAAAMAAwAAAACAAAAAAAMAAAAAAACAAEAAAAMAAwAAAADAAAAAAAMAAAAAAADAAEAAAAMAAwAAAAEAAAAAAAMAAAAAAAEAAEAAAAMAAwAAAAAAAMAAAAAAAwAAAABAAMAAAAMAAwAAAAFAAAAAAAMAAAAAAAFAAEAAAAMAAwAAAAFAAIAAAAMAAwAAAAFAAMAAAAMAAwAAAAGAAAAAAAMAAAAAAAGAAEAAAAMAAwAAAAGAAIAAAAMAAwAAAAGAAMAAAAMAAwAAAAHAAAAAAAMAAAAAAAHAAEAAAAMAAwAAAAHAAIAAAAMAAwAAAAHAAMAAAAMAAwAAAAIAAAAAAAMAAAAAAAIAAEAAAAMAAwAAAAIAAIAAAAMAAwAAAAIAAMAAAAMAAwAAAAJAAAAAAAMAAAAAAAJAAEAAAAMAAwAAAAJAAIAAAAMAAwAAAAJAAMAAAAMAAwAAAAKAAAAAAAMAAAAAAAKAAEAAAAMAAwAAAAKAAIAAAAMAAwAAAAKAAMAAAAMAAwAAAAAAAQAAAAAAAwAAAABAAQAAAAMAAwAAAACAAQAAAAMAAwAAAADAAQAAAAMAAwAAAAEAAQAAAAMAAwAAAAFAAQAAAAMAAwAAAAGAAQAAAAMAAwAAAAHAAQAAAAMAAwAAAAIAAQAAAAMAAwAAAAJAAQAAAAMAAwAAAAKAAQAAAAMAAwAAAALAAAAAAAUAAAAAAALAAEAAAAUAAwAAAALAAIAAAAUAAwAAAALAAMAAAAUAAwAAAALAAQAAAAUAAwAAAAAAAUAAAAAABQAAAABAAUAAAAMABQAAAACAAUAAAAMABQAAAADAAUAAAAMABQAAAAEAAUAAAAMABQAAAAFAAUAAAAMABQAAAAGAAUAAAAMABQAAAAHAAUAAAAMABQAAAAIAAUAAAAMABQAAAAJAAUAAAAMABQAAAAKAAUAAAAMABQAAAALAAUAAAAUABQAAAA=")
@@ -478,7 +474,6 @@ position = Vector2(84, 161)
 item_type = "gold"
 is_static_spawn = true
 
-[connection signal="pressed" from="Interface/HintButton" to="Interface" method="_on_hint_button_pressed"]
 [connection signal="pressed" from="Interface/BagButton" to="Interface" method="_on_bag_button_pressed"]
 
 [editable path="Terrain"]

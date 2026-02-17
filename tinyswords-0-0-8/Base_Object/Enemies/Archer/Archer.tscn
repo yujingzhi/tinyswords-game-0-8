@@ -38,4 +38,17 @@ stretch_margin_top = 0
 stretch_margin_right = 64
 stretch_margin_bottom = 0
 texture_under = ExtResource("6")
+
+[node name="Fill" type="TextureProgressBar" parent="HealthBar"]
+anchors_preset = 15
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 56.0
+offset_right = -56.0
+offset_bottom = 0.0
+nine_patch_stretch = true
+stretch_margin_left = 64
+stretch_margin_right = 64
 texture_progress = ExtResource("7")

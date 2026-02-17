@@ -17,6 +17,11 @@ const ITEM_TEXTURES: Dictionary = {
 	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png")
 	# 未来扩展示范： "stone": preload("res://Base_Object/Stone.png")
 }
+var pickup_fx_defs: Array[Dictionary] = [
+	{"texture": preload("res://Assets/FX/Particles/Dust_01.png"), "frames": 8},
+	{"texture": preload("res://Assets/FX/Particles/Dust_02.png"), "frames": 10},
+	{"texture": preload("res://Assets/FX/Particles/Water Splash.png"), "frames": 9}
+]
 
 @export_category("Audio")
 @export var sfx_drop: AudioStream   
@@ -63,6 +68,7 @@ func _on_pickup_area_body_entered(body: Node2D) -> void:
 		# 完美联动 UI 系统
 		get_tree().call_group(&"interface", &"add_item", item_type, 1)
 		spawn_floating_text()
+		_spawn_pickup_fx()
 		
 		if is_instance_valid(audio_player) and sfx_pickup:
 			audio_player.stream = sfx_pickup
@@ -87,9 +93,9 @@ func spawn_floating_text() -> void:
 	var label: Label = Label.new()
 	label.text = "+1" 
 	var settings: LabelSettings = LabelSettings.new()
-	settings.font_size = 12                  
+	settings.font_size = 24                  
 	settings.font_color = Color(0.2, 1.0, 0.2) 
-	settings.outline_size = 4                
+	settings.outline_size = 6                
 	settings.outline_color = Color.BLACK      
 	label.label_settings = settings
 	label.z_index = 100 
@@ -97,8 +103,52 @@ func spawn_floating_text() -> void:
 	get_tree().current_scene.add_child(label)
 	label.global_position = global_position
 	
-	var tween: Tween = label.create_tween()
+	var move_tween: Tween = label.create_tween()
+	move_tween.set_parallel(true)
+	move_tween.tween_property(label, "global_position:y", label.global_position.y - 46.0, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	move_tween.tween_property(label, "modulate:a", 0.0, 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	move_tween.chain().tween_callback(label.queue_free)
+	
+	var scale_tween: Tween = label.create_tween()
+	scale_tween.tween_property(label, "scale", Vector2(1.35, 1.35), 0.12).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	scale_tween.tween_property(label, "scale", Vector2(1.0, 1.0), 0.18).set_trans(Tween.TRANS_SPRING)
+
+func _spawn_pickup_fx() -> void:
+	if pickup_fx_defs.is_empty():
+		return
+	var fx = pickup_fx_defs.pick_random()
+	var texture = fx["texture"]
+	var frame_count = int(fx["frames"])
+	if texture == null or frame_count <= 0:
+		return
+	var fx_sprite = AnimatedSprite2D.new()
+	fx_sprite.sprite_frames = _build_fx_frames(texture, frame_count, 12.0)
+	fx_sprite.animation = "fx"
+	fx_sprite.global_position = global_position + Vector2(0, -8)
+	fx_sprite.scale = Vector2(0.6, 0.6)
+	fx_sprite.z_index = 15
+	var root = get_tree().current_scene
+	if root:
+		root.add_child(fx_sprite)
+	fx_sprite.play()
+	if not fx_sprite.animation_finished.is_connected(fx_sprite.queue_free):
+		fx_sprite.animation_finished.connect(fx_sprite.queue_free)
+	var tween = create_tween()
 	tween.set_parallel(true)
-	tween.tween_property(label, "global_position:y", label.global_position.y - 30.0, 0.5)
-	tween.tween_property(label, "modulate:a", 0.0, 0.5)
-	tween.chain().tween_callback(label.queue_free)
+	tween.tween_property(fx_sprite, "scale", Vector2(1.0, 1.0), 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(fx_sprite, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(fx_sprite.queue_free)
+
+func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> SpriteFrames:
+	var frames = SpriteFrames.new()
+	frames.add_animation("fx")
+	var frame_width = texture.get_width() / float(frame_count)
+	var frame_height = texture.get_height()
+	for i in range(frame_count):
+		var atlas = AtlasTexture.new()
+		atlas.atlas = texture
+		atlas.region = Rect2(i * frame_width, 0, frame_width, frame_height)
+		frames.add_frame("fx", atlas)
+	frames.set_animation_speed("fx", fps)
+	frames.set_animation_loop("fx", false)
+	return frames

@@ -27,6 +27,7 @@ class_name ObjectBase # 注册为全局类，方便以后类型提示
 
 # --- 🚀 生命周期 ---
 func _ready() -> void:
+	add_to_group("obstacle")
 	# 【导师修正】Godot 4.x 推荐使用 randi_range() 进行安全且均等的区间随机
 	if variation_count > 0:
 		var variation: int = randi_range(1, variation_count) 

@@ -21,9 +21,11 @@ extends CharacterBody2D
 @export var idle_time_range: Vector2 = Vector2(0.6, 1.6)
 @export var move_time_range: Vector2 = Vector2(0.8, 1.8)
 @export var arrow_scene: PackedScene
+@export var hit_flash_color: Color = Color(1, 0.4, 0.4, 1)
+@export var hit_flash_time: float = 0.12
 
 @onready var anim: AnimatedSprite2D = $AnimatedSprite2D
-@onready var health_bar: TextureProgressBar = $HealthBar
+@onready var health_bar: TextureProgressBar = $HealthBar/Fill
 
 var current_health: int
 var shoot_timer: float = 0.0
@@ -35,6 +37,11 @@ var state_timer: float = 0.0
 var roam_layer: TileMapLayer
 var roam_cells: Array[Vector2i] = []
 var home_cell: Vector2i
+var hit_tween: Tween
+var hit_fx_defs: Array[Dictionary] = [
+	{"texture": preload("res://Assets/FX/Particles/Explosion_01.png"), "frames": 8},
+	{"texture": preload("res://Assets/FX/Particles/Explosion_02.png"), "frames": 10}
+]
 
 func _ready() -> void:
 	add_to_group("enemy")
@@ -83,8 +90,63 @@ func _physics_process(delta: float) -> void:
 func take_damage(amount: int) -> void:
 	current_health = max(current_health - amount, 0)
 	_update_health_bar()
+	if anim:
+		if hit_tween and hit_tween.is_running():
+			hit_tween.kill()
+		var base_scale = anim.scale
+		anim.modulate = hit_flash_color
+		hit_tween = create_tween()
+		hit_tween.tween_property(anim, "modulate", Color(1, 1, 1, 1), hit_flash_time)
+		hit_tween.parallel().tween_property(anim, "scale", base_scale * 1.08, hit_flash_time * 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		hit_tween.tween_property(anim, "scale", base_scale, hit_flash_time * 0.6).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		hit_tween.tween_callback(func(): anim.scale = base_scale)
+		_spawn_hit_fx()
+	print("Archer受击 | 伤害=", amount, " | HP=", current_health, "/", max_health)
 	if current_health <= 0:
 		queue_free()
+
+func _spawn_hit_fx() -> void:
+	if hit_fx_defs.is_empty():
+		return
+	var fx = hit_fx_defs.pick_random()
+	var texture = fx["texture"]
+	var frame_count = int(fx["frames"])
+	_spawn_world_fx(texture, frame_count, global_position + Vector2(0, -10), Vector2(0.6, 0.6))
+
+func _spawn_world_fx(texture: Texture2D, frame_count: int, fx_position: Vector2, fx_scale: Vector2) -> void:
+	if texture == null or frame_count <= 0:
+		return
+	var sprite_fx = AnimatedSprite2D.new()
+	sprite_fx.sprite_frames = _build_fx_frames(texture, frame_count, 12.0)
+	sprite_fx.animation = "fx"
+	sprite_fx.global_position = fx_position
+	sprite_fx.scale = fx_scale
+	sprite_fx.z_index = 15
+	var root = get_tree().current_scene
+	if root:
+		root.add_child(sprite_fx)
+	sprite_fx.play()
+	if not sprite_fx.animation_finished.is_connected(sprite_fx.queue_free):
+		sprite_fx.animation_finished.connect(sprite_fx.queue_free)
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(sprite_fx, "scale", fx_scale * 1.25, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(sprite_fx, "modulate:a", 0.0, 0.35).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(sprite_fx.queue_free)
+
+func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> SpriteFrames:
+	var frames = SpriteFrames.new()
+	frames.add_animation("fx")
+	var frame_width = texture.get_width() / float(frame_count)
+	var frame_height = texture.get_height()
+	for i in range(frame_count):
+		var atlas = AtlasTexture.new()
+		atlas.atlas = texture
+		atlas.region = Rect2(i * frame_width, 0, frame_width, frame_height)
+		frames.add_frame("fx", atlas)
+	frames.set_animation_speed("fx", fps)
+	frames.set_animation_loop("fx", false)
+	return frames
 
 func _shoot(target_global_position: Vector2) -> void:
 	shoot_timer = shoot_interval
