@@ -84,19 +84,19 @@ func _build_animations() -> void:
 	_add_strip(frames, "grass", grass_texture, 12, grass_fps)
 	anim.sprite_frames = frames
 
-func _add_strip(frames: SpriteFrames, name: String, texture: Texture2D, frame_count: int, fps: float) -> void:
+func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, frame_count: int, fps: float) -> void:
 	if texture == null:
 		return
-	frames.add_animation(name)
-	var frame_width = texture.get_width() / frame_count
+	frames.add_animation(anim_name)
+	var frame_width = texture.get_width() / float(frame_count)
 	var frame_height = texture.get_height()
 	for i in range(frame_count):
 		var atlas = AtlasTexture.new()
 		atlas.atlas = texture
 		atlas.region = Rect2(i * frame_width, 0, frame_width, frame_height)
-		frames.add_frame(name, atlas)
-	frames.set_animation_speed(name, fps)
-	frames.set_animation_loop(name, true)
+		frames.add_frame(anim_name, atlas)
+	frames.set_animation_speed(anim_name, fps)
+	frames.set_animation_loop(anim_name, true)
 
 func _die() -> void:
 	if drop_item_scene:

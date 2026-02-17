@@ -10,6 +10,9 @@ class_name Level
 @export var sheep_scene: PackedScene
 @export var total_sheep: int = 6
 @export var sheep_roam_cell_radius: int = 4
+@export var archer_scene: PackedScene
+@export var total_archers: int = 3
+@export var archer_roam_cell_radius: int = 4
 
 # --- 节点引用 ---
 # 注意：路径必须和你场景里的实际名字一致！
@@ -23,6 +26,7 @@ class_name Level
 func _ready() -> void:
 	spawn_objects()
 	spawn_sheep()
+	spawn_archers()
 	
 	# 🔥🔥🔥 启动延迟体检 🔥🔥🔥
 	print("\n================ 🕵️‍♂️ 游戏体检开始 ================")
@@ -148,6 +152,34 @@ func spawn_sheep() -> void:
 		objects_container.add_child(sheep_instance)
 		if sheep_instance.has_method("setup_roam"):
 			sheep_instance.setup_roam(sheep_spawn_layer, random_cell, sheep_roam_cell_radius)
+		
+		occupied_cells.append(random_cell)
+		spawned_count += 1
+
+func spawn_archers() -> void:
+	var available_cells: Array[Vector2i] = sheep_spawn_layer.get_used_cells()
+	if available_cells.is_empty():
+		print("错误：SheepSpawnLayer 没有画任何格子！无法生成弓箭手。")
+		return
+		
+	if archer_scene == null:
+		print("错误：没有在 Inspector 里给 Archer Scene 赋值！")
+		return
+		
+	var occupied_cells: Array[Vector2i] = []
+	var spawned_count: int = 0
+	var target_total = min(total_archers, available_cells.size())
+	
+	while spawned_count < target_total:
+		var random_cell = available_cells.pick_random()
+		if random_cell in occupied_cells:
+			continue
+			
+		var archer_instance = archer_scene.instantiate()
+		archer_instance.position = sheep_spawn_layer.map_to_local(random_cell)
+		objects_container.add_child(archer_instance)
+		if archer_instance.has_method("setup_roam"):
+			archer_instance.setup_roam(sheep_spawn_layer, random_cell, archer_roam_cell_radius)
 		
 		occupied_cells.append(random_cell)
 		spawned_count += 1

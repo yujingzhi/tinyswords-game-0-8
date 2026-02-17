@@ -5,6 +5,10 @@ class_name Interface # 注册大管家
 @onready var slots_container: HBoxContainer = $Avatar/HBoxContainer
 @onready var inventory_panel: TileMapLayer = $TileMapLayer
 @onready var grid_container: GridContainer = $TileMapLayer/InventoryGrid
+@onready var player_health_container: Control = $PlayerHealthBar
+@onready var player_stamina_container: Control = $PlayerStaminaBar
+@onready var player_health_bar: TextureProgressBar = $PlayerHealthBar/Fill
+@onready var player_stamina_bar: TextureProgressBar = $PlayerStaminaBar/Fill
 
 # --- 🔥 配置区域 ---
 # 【检查！】必须在编辑器里把 InventorySlot.tscn 拖给它
@@ -38,6 +42,7 @@ func _ready() -> void:
 		inventory_panel.modulate.a = 0
 		# 游戏开始时刷新一次空背包
 		refresh_inventory_ui()
+	call_deferred("_sync_player_bars")
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_inventory"):
@@ -113,6 +118,36 @@ func update_weapon_indicator(weapon_index: int) -> void:
 			tween.tween_property(slot, "rotation", 0.0, 0.2).set_trans(Tween.TRANS_SINE) # 角度回归水平
 			tween.tween_property(slot, "scale", Vector2(0.8, 0.8), 0.2).set_trans(Tween.TRANS_SINE) # 缩回到0.8
 	# 你的武器轮换逻辑写在这里...
+
+func update_player_health(current: int, max_value: int) -> void:
+	if player_health_bar:
+		player_health_bar.max_value = max_value
+		player_health_bar.value = current
+
+func update_player_stamina(current: int, max_value: int) -> void:
+	if player_stamina_bar:
+		player_stamina_bar.max_value = max_value
+		player_stamina_bar.value = current
+
+func _sync_player_bars() -> void:
+	var player = get_tree().get_first_node_in_group("peao")
+	if player:
+		var max_health = player.get("max_health")
+		var current_health = player.get("current_health")
+		if max_health != null and current_health != null:
+			update_player_health(current_health, max_health)
+		var max_stamina = player.get("max_stamina")
+		var current_stamina = player.get("current_stamina")
+		if max_stamina != null and current_stamina != null:
+			update_player_stamina(current_stamina, max_stamina)
+
+func _on_hint_button_pressed() -> void:
+	if player_health_container:
+		player_health_container.scale = Vector2(1.05, 1.05)
+		create_tween().tween_property(player_health_container, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_SPRING)
+	if player_stamina_container:
+		player_stamina_container.scale = Vector2(1.05, 1.05)
+		create_tween().tween_property(player_stamina_container, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_SPRING)
 
 # --- 🎒 背包开关动画逻辑 (保持你的原有代码不变) ---
 func _on_bag_button_pressed() -> void:

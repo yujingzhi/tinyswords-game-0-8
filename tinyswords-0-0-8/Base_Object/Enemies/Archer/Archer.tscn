@@ -1,0 +1,41 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://Base_Object/Enemies/Archer/Archer.gd" id="1"]
+[ext_resource type="Texture2D" path="res://Assets/Enemies/Archer/Archer_Idle.png" id="2"]
+[ext_resource type="Texture2D" path="res://Assets/Enemies/Archer/Archer_Run.png" id="3"]
+[ext_resource type="Texture2D" path="res://Assets/Enemies/Archer/Archer_Shoot.png" id="4"]
+[ext_resource type="PackedScene" path="res://Base_Object/Enemies/Archer/Arrow.tscn" id="5"]
+[ext_resource type="Texture2D" path="res://Assets/UI/Bars/SmallBar_Base.png" id="6"]
+[ext_resource type="Texture2D" path="res://Assets/UI/Bars/SmallBar_Fill.png" id="7"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_1"]
+radius = 8.0
+
+[node name="Archer" type="CharacterBody2D"]
+script = ExtResource("1")
+collision_layer = 1
+collision_mask = 1
+idle_texture = ExtResource("2")
+move_texture = ExtResource("3")
+shoot_texture = ExtResource("4")
+arrow_scene = ExtResource("5")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -10)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 4)
+shape = SubResource("CircleShape2D_1")
+
+[node name="HealthBar" type="TextureProgressBar" parent="."]
+position = Vector2(-80, -40)
+custom_minimum_size = Vector2(320, 64)
+scale = Vector2(0.5, 0.5)
+show_percentage = false
+nine_patch_stretch = true
+stretch_margin_left = 64
+stretch_margin_top = 0
+stretch_margin_right = 64
+stretch_margin_bottom = 0
+texture_under = ExtResource("6")
+texture_progress = ExtResource("7")

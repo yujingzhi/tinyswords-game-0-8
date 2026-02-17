@@ -11,7 +11,7 @@ const MODULATE_PRESSED = Color(0.8, 0.8, 0.8, 1)
 
 # 🔥 1. 获取子节点的音频播放器
 # (确保你的节点名字就叫 AudioStreamPlayer，如果改了名这里也要改)
-@onready var click_sound: AudioStreamPlayer = $AudioStreamPlayer
+@onready var click_sound: AudioStreamPlayer = get_node_or_null("AudioStreamPlayer")
 
 func _ready() -> void:
 	pivot_offset = size / 2

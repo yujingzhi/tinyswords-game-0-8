@@ -13,6 +13,10 @@ class_name CharacterBase
 @export_category("Movement & Stats")
 @export var move_speed: float = 200.0         
 @export_dir var texture_folder_path: String = "res://CharacterBase" 
+@export var max_health: int = 10
+@export var max_stamina: int = 100
+@export var hit_flash_color: Color = Color(1, 0.4, 0.4, 1)
+@export var hit_flash_time: float = 0.12
 
 @export_category("Audio SFX")
 @export var sfx_wood: AudioStream             
@@ -48,6 +52,9 @@ const MAX_WEAPON_COUNT: int = 4
 
 # --- 🏃‍♂️ 角色状态机 ---
 var is_attacking: bool = false 
+var current_health: int
+var current_stamina: int
+var hit_tween: Tween
 
 # --- 🎵 行走音效时钟 ---
 var step_timer: float = 0.0
@@ -63,6 +70,10 @@ func _ready() -> void:
 	# 🌟 强制给主角上户口，确保无论在哪个地图，掉落物都能认出你！
 	add_to_group("player")
 	add_to_group("peao")
+	current_health = max_health
+	current_stamina = max_stamina
+	get_tree().call_group("interface", "update_player_health", current_health, max_health)
+	get_tree().call_group("interface", "update_player_stamina", current_stamina, max_stamina)
 	
 	_update_weapon_state()
 	if attack_area_collision:
@@ -231,6 +242,10 @@ func _on_area_attack_body_entered(body: Node2D) -> void:
 		if current_weapon_index == ToolType.KNIFE:
 			sheep.take_damage(1)
 		return
+	if body.is_in_group("enemy") and body.has_method("take_damage"):
+		if current_weapon_index == ToolType.KNIFE:
+			body.take_damage(1)
+		return
 		
 	# ✨ 核心优化：多态转换。如果 body 不是 ObjectBase 的子类，这里会返回 null
 	var interactable: ObjectBase = body as ObjectBase
@@ -261,3 +276,13 @@ func _on_area_attack_body_entered(body: Node2D) -> void:
 				_play_sfx(sfx_stone)
 		else:
 			print("【导师提示】工具不匹配！你拿着工具ID: ", current_weapon_index, " 敲不动 ", target_type)
+
+func take_damage(amount: int) -> void:
+	current_health = max(current_health - amount, 0)
+	if sprite:
+		if hit_tween and hit_tween.is_running():
+			hit_tween.kill()
+		sprite.modulate = hit_flash_color
+		hit_tween = create_tween()
+		hit_tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), hit_flash_time)
+	get_tree().call_group("interface", "update_player_health", current_health, max_health)

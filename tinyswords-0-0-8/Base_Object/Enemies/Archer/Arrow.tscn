@@ -1,0 +1,20 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://Base_Object/Enemies/Archer/Arrow.gd" id="1"]
+[ext_resource type="Texture2D" path="res://Assets/Enemies/Archer/Arrow.png" id="2"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
+size = Vector2(10, 2)
+
+[node name="Arrow" type="Area2D"]
+script = ExtResource("1")
+collision_layer = 1
+collision_mask = 1
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+texture = ExtResource("2")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_1")
+
+[connection signal="body_entered" from="Arrow" to="Arrow" method="_on_body_entered"]
