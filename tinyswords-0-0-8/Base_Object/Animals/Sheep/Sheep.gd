@@ -1,5 +1,6 @@
 extends CharacterBody2D
 class_name Sheep
+# 绵羊的简单 AI：在原地附近闲逛、吃草、受击掉落
 
 @export var roam_radius: float = 120.0
 @export var roam_cell_radius: int = 4
@@ -18,8 +19,10 @@ class_name Sheep
 @export var idle_texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Idle.png")
 @export var move_texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Move.png")
 @export var grass_texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Grass.png")
+# 上面都是可在编辑器中调整的参数，包括移动范围、动画速度和掉落
 
 @onready var anim: AnimatedSprite2D = $AnimatedSprite2D
+# AnimatedSprite2D 用于播放帧动画
 
 var home_position: Vector2
 var target_position: Vector2
@@ -33,13 +36,16 @@ var hit_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Dust_01.png"), "frames": 8},
 	{"texture": preload("res://Assets/FX/Particles/Dust_02.png"), "frames": 10}
 ]
+# hit_fx_defs 用于受击时随机播放沙尘特效
 
 func _ready() -> void:
+	# 初始化出生位置与动画
 	home_position = global_position
 	_build_animations()
 	_enter_idle()
 
 func _physics_process(delta: float) -> void:
+	# 简单状态机：move 与 idle/grass 之间切换
 	if state == "move":
 		var to_target = target_position - global_position
 		if to_target.length() <= 2.0:
@@ -50,7 +56,7 @@ func _physics_process(delta: float) -> void:
 			anim.flip_h = velocity.x < 0
 	else:
 		velocity = Vector2.ZERO
-	
+	# 计时器到期后切换状态
 	state_timer -= delta
 	if state_timer <= 0.0:
 		if state == "move":
@@ -59,6 +65,7 @@ func _physics_process(delta: float) -> void:
 			_enter_move()
 
 func take_damage(amount: int) -> void:
+	# 受击时扣血并播放缩放特效
 	health -= amount
 	if anim:
 		if hit_tween and hit_tween.is_running():
@@ -74,6 +81,7 @@ func take_damage(amount: int) -> void:
 		_die()
 
 func _spawn_hit_fx() -> void:
+	# 随机选取尘土特效
 	if hit_fx_defs.is_empty():
 		return
 	var fx = hit_fx_defs.pick_random()
@@ -82,6 +90,7 @@ func _spawn_hit_fx() -> void:
 	_spawn_world_fx(texture, frame_count, global_position + Vector2(0, -8), Vector2(0.6, 0.6))
 
 func _spawn_world_fx(texture: Texture2D, frame_count: int, fx_position: Vector2, fx_scale: Vector2) -> void:
+	# 在世界中播放一次性动画并自动销毁
 	if texture == null or frame_count <= 0:
 		return
 	var sprite_fx = AnimatedSprite2D.new()
@@ -103,6 +112,7 @@ func _spawn_world_fx(texture: Texture2D, frame_count: int, fx_position: Vector2,
 	tween.chain().tween_callback(sprite_fx.queue_free)
 
 func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> SpriteFrames:
+	# 从一张精灵表切出多帧
 	var frames = SpriteFrames.new()
 	frames.add_animation("fx")
 	var frame_width = texture.get_width() / float(frame_count)
@@ -117,6 +127,7 @@ func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> Sprit
 	return frames
 
 func _enter_idle() -> void:
+	# 进入休息或吃草状态，随机决定是否吃草
 	state_timer = randf_range(idle_time_range.x, idle_time_range.y)
 	if randf() < eat_chance:
 		state = "grass"
@@ -126,6 +137,7 @@ func _enter_idle() -> void:
 		anim.play("idle")
 
 func _enter_move() -> void:
+	# 进入移动状态，选择一个随机目标点
 	state = "move"
 	state_timer = randf_range(move_time_range.x, move_time_range.y)
 	if roam_cells.is_empty():
@@ -136,6 +148,7 @@ func _enter_move() -> void:
 	anim.play("move")
 
 func _build_animations() -> void:
+	# 将多张贴图切成动画并组合成 SpriteFrames
 	var frames = SpriteFrames.new()
 	_add_strip(frames, "idle", idle_texture, 6, idle_fps)
 	_add_strip(frames, "move", move_texture, 4, move_fps)
@@ -143,6 +156,7 @@ func _build_animations() -> void:
 	anim.sprite_frames = frames
 
 func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, frame_count: int, fps: float) -> void:
+	# 将横向排列的帧切成动画
 	if texture == null:
 		return
 	frames.add_animation(anim_name)
@@ -157,6 +171,7 @@ func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, fra
 	frames.set_animation_loop(anim_name, true)
 
 func _die() -> void:
+	# 死亡后生成掉落物并销毁自己
 	if drop_item_scene:
 		var drop_count = randi_range(min_drop, max_drop)
 		for i in range(drop_count):
@@ -172,12 +187,14 @@ func _die() -> void:
 	queue_free()
 
 func setup_roam(layer: TileMapLayer, cell: Vector2i, radius_cells: int) -> void:
+	# 设置基于瓦片坐标的漫游范围
 	roam_layer = layer
 	home_cell = cell
 	home_position = roam_layer.map_to_local(home_cell)
 	roam_cells = _collect_cells_in_radius(roam_layer.get_used_cells(), home_cell, radius_cells)
 
 func _collect_cells_in_radius(cells: Array[Vector2i], center: Vector2i, radius_cells: int) -> Array[Vector2i]:
+	# 筛选出以中心为圆心的半径内瓦片
 	var result: Array[Vector2i] = []
 	var center_vec = Vector2(center)
 	for c in cells:

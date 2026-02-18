@@ -1,9 +1,11 @@
 extends Node2D
 class_name Level
+# 关卡管理：负责随机生成资源物体、羊与弓箭手
 
 # --- 配置变量 ---
 # 1. 在检查器里，把 Tree.tscn 和 Rock.tscn 拖进这个数组
 @export var object_scenes: Array[PackedScene] = []
+# 这里放可生成的场景（例如树、矿石）
 
 # 2. 你想生成多少个物体？
 @export var total_objects: int = 40
@@ -13,17 +15,21 @@ class_name Level
 @export var archer_scene: PackedScene
 @export var total_archers: int = 3
 @export var archer_roam_cell_radius: int = 4
+# total_* 控制生成数量，*_roam_cell_radius 控制漫游范围
 
 # --- 节点引用 ---
 # 注意：路径必须和你场景里的实际名字一致！
 # 这是你在 Terrain 里画了蓝色方块的那一层 (通常设为透明)
 @onready var spawn_layer: TileMapLayer = $Terrain/SpawnLayer
 @onready var sheep_spawn_layer: TileMapLayer = $Terrain/SheepSpawnLayer
+# spawn_layer 用于资源物体，sheep_spawn_layer 用于生物
 
 # 这是用来存放生成物体的容器 (开启了 Y-Sort 的那个 Node2D)
 @onready var objects_container: Node2D = $Objects
+# 生成的对象会挂在此容器下，方便统一管理
 
 func _ready() -> void:
+	# 初始化关卡内所有生成物
 	spawn_objects()
 	spawn_sheep()
 	spawn_archers()
@@ -40,7 +46,7 @@ func _ready() -> void:
 	else:
 		printerr("❌ 主角检查失败: 没找到组名为 'peao' 的节点！")
 		printerr("   -> 解决办法: 选中主角根节点 -> 节点(Node)面板 -> 分组 -> 添加 'peao'")
-
+	
 	# --- 2. 检查掉落配置 ---
 	if object_scenes.is_empty():
 		printerr("❌ 错误: Level 的 Object Scenes 是空的！")
@@ -71,6 +77,7 @@ func _ready() -> void:
 	print("================ 👨‍⚕️ 体检结束 ================\n")
 
 func spawn_objects() -> void:
+	# 生成资源物体（树/石头等）
 	# 1. 获取所有允许生成的格子坐标 (你在编辑器里画过的)
 	var available_cells: Array[Vector2i] = spawn_layer.get_used_cells()
 	
@@ -108,8 +115,6 @@ func spawn_objects() -> void:
 		# 6. 添加到场景
 		objects_container.add_child(obj_instance)
 		
-		# ... 生成物体代码 ...
-
 		# 7. 关键一步：把地盘圈起来！(九宫格防御)
 		# 如果不写这段，电脑就会觉得这块地还是空的，下次还往这儿放
 		occupied_cells.append(random_cell)                   # 正中心
@@ -129,6 +134,7 @@ func spawn_objects() -> void:
 	print("生成完毕！共生成了 ", spawned_count, " 个物体。")
 
 func spawn_sheep() -> void:
+	# 生成羊并设置漫游范围
 	var available_cells: Array[Vector2i] = sheep_spawn_layer.get_used_cells()
 	if available_cells.is_empty():
 		print("错误：SheepSpawnLayer 没有画任何格子！无法生成羊。")
@@ -157,6 +163,7 @@ func spawn_sheep() -> void:
 		spawned_count += 1
 
 func spawn_archers() -> void:
+	# 生成弓箭手并设置漫游范围
 	var available_cells: Array[Vector2i] = sheep_spawn_layer.get_used_cells()
 	if available_cells.is_empty():
 		print("错误：SheepSpawnLayer 没有画任何格子！无法生成弓箭手。")

@@ -1,5 +1,6 @@
 extends CanvasLayer
 class_name Interface # 注册大管家
+# UI 总控：背包、快捷栏、血量/体力条的更新
 
 # --- 🔗 引用区域 ---
 @onready var slots_container: HBoxContainer = $Avatar/HBoxContainer
@@ -8,10 +9,12 @@ class_name Interface # 注册大管家
 @onready var player_health_bar: TextureProgressBar = $PlayerHealthBar/Fill
 @onready var player_stamina_bar: TextureProgressBar = $PlayerStaminaBar/Fill
 @onready var quickbar_container: HBoxContainer = $QuickBar
+# 这些节点分别对应 UI 中的背包、格子和血条等元素
 
 # --- 🔥 配置区域 ---
 # 【检查！】必须在编辑器里把 InventorySlot.tscn 拖给它
 @export var slot_scene: PackedScene 
+# slot_scene 是背包格子实例的预制体
 
 # 字典：教 UI 如何将 "wood" 映射成对应的图片
 @onready var item_icons: Dictionary = {
@@ -19,25 +22,30 @@ class_name Interface # 注册大管家
 	"gold": preload("res://Base_Object/Gold_Resource.png"),
 	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png")
 }
+# 用物品类型字符串映射到图标贴图
 var consume_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Fire_01.png"), "frames": 8},
 	{"texture": preload("res://Assets/FX/Particles/Fire_02.png"), "frames": 10},
 	{"texture": preload("res://Assets/FX/Particles/Fire_03.png"), "frames": 12},
 	{"texture": preload("res://Assets/FX/Particles/Water Splash.png"), "frames": 9}
 ]
+# 消耗物品时的特效集合
 
 # --- 🌟 数据中枢 ---
 var origin_pos: Vector2
 var total_slots: int = 21 # 背包总共有多少格子
 const SLOT_SIZE = Vector2(96, 96)
 const QUICKBAR_SIZE = Vector2(72, 72)
+# SLOT_SIZE/QUICKBAR_SIZE 控制格子的最小显示尺寸
 
 # 💡【核心数据】这是你真正的背包，所有加减全在这发生
 var inventory_data: Dictionary = {} 
 var quickbar_items: Array[String] = ["", "", "", ""]
+# inventory_data 保存“物品类型 -> 数量”
 
 # --- 🚀 初始化 ---
 func _ready() -> void:
+	# 注册到 interface 分组，方便其他脚本调用 UI 更新
 	add_to_group("interface")
 	
 	# 💡 引擎哲学：游戏一开始，默认不拿任何武器 (-1 代表空手)
@@ -53,6 +61,7 @@ func _ready() -> void:
 	call_deferred("_sync_player_bars")
 
 func _unhandled_input(event: InputEvent) -> void:
+	# 处理背包开关与快捷栏按键
 	if event.is_action_pressed("ui_cancel"):
 		if inventory_panel and inventory_panel.visible and inventory_panel.modulate.a > 0.1:
 			_close_inventory_animation()
@@ -71,6 +80,7 @@ func _unhandled_input(event: InputEvent) -> void:
 # --- 📥 数据更新与接收 ---
 # 这个方法会被外界（如 PhysicItem）呼叫
 func add_item(item_type: String, amount: int) -> void:
+	# 增加某种物品数量
 	# 1. 如果是第一次捡到这玩意，给字典开个户
 	if not inventory_data.has(item_type):
 		inventory_data[item_type] = 0
@@ -84,6 +94,7 @@ func add_item(item_type: String, amount: int) -> void:
 
 # --- 🔄 UI 刷新器 ---
 func refresh_inventory_ui() -> void:
+	# 重建背包格子并填充数据
 	# 1. 暴力美学：清空网格里所有的老格子
 	for child in grid_container.get_children():
 		child.queue_free()
@@ -114,6 +125,7 @@ func refresh_inventory_ui() -> void:
 # --- ⚔️ 武器栏逻辑 ---
 # --- ⚔️ 武器栏高级视觉交互 ---
 func update_weapon_indicator(weapon_index: int) -> void:
+	# 高亮当前武器图标
 	if not slots_container: return
 	var slots = slots_container.get_children()
 	
@@ -143,16 +155,19 @@ func update_weapon_indicator(weapon_index: int) -> void:
 	# 你的武器轮换逻辑写在这里...
 
 func update_player_health(current: int, max_value: int) -> void:
+	# 更新血条显示
 	if player_health_bar:
 		player_health_bar.max_value = max_value
 		player_health_bar.value = current
 
 func update_player_stamina(current: int, max_value: int) -> void:
+	# 更新体力条显示
 	if player_stamina_bar:
 		player_stamina_bar.max_value = max_value
 		player_stamina_bar.value = current
 
 func _sync_player_bars() -> void:
+	# 从玩家节点读取当前状态并同步 UI
 	var player = get_tree().get_first_node_in_group("peao")
 	if player:
 		var max_health = player.get("max_health")
@@ -165,6 +180,7 @@ func _sync_player_bars() -> void:
 			update_player_stamina(current_stamina, max_stamina)
 
 func _refresh_quickbar_ui() -> void:
+	# 刷新快捷栏显示
 	if not quickbar_container:
 		return
 	var slots = quickbar_container.get_children()
@@ -184,6 +200,7 @@ func _refresh_quickbar_ui() -> void:
 			slot.update_slot(null, 0, "")
 
 func assign_quick_slot(index: int, item_type: String) -> void:
+	# 将某种物品绑定到快捷栏
 	if index < 0 or index >= quickbar_items.size():
 		return
 	quickbar_items[index] = item_type
@@ -191,6 +208,7 @@ func assign_quick_slot(index: int, item_type: String) -> void:
 	print("快捷栏设置 | 格子=", index + 1, " | 类型=", item_type)
 
 func use_quick_slot(index: int) -> void:
+	# 使用快捷栏物品
 	if index < 0 or index >= quickbar_items.size():
 		return
 	var item_type = quickbar_items[index]
@@ -203,9 +221,11 @@ func use_quick_slot(index: int) -> void:
 			print("快捷栏未实现消耗 | 格子=", index + 1, " | 类型=", item_type)
 
 func _get_player() -> Node:
+	# 获取玩家节点（使用分组查询）
 	return get_tree().get_first_node_in_group("peao")
 
 func _consume_meat(source: String) -> bool:
+	# 吃肉回血，并更新 UI 与库存
 	if not inventory_data.has("meat") or inventory_data["meat"] <= 0:
 		print("肉消耗失败 | 原因=无库存 | 来源=", source)
 		return false
@@ -235,11 +255,13 @@ func _consume_meat(source: String) -> bool:
 	return true
 
 func _pick_consume_fx() -> Dictionary:
+	# 随机选择消耗特效
 	if consume_fx_defs.is_empty():
 		return {}
 	return consume_fx_defs.pick_random()
 
 func _spawn_world_fx(texture: Texture2D, frame_count: int, fx_position: Vector2, fx_scale: Vector2) -> void:
+	# 在世界中播放一次性特效
 	if texture == null or frame_count <= 0:
 		return
 	var fx_sprite = AnimatedSprite2D.new()
@@ -261,6 +283,7 @@ func _spawn_world_fx(texture: Texture2D, frame_count: int, fx_position: Vector2,
 	tween.chain().tween_callback(fx_sprite.queue_free)
 
 func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> SpriteFrames:
+	# 将贴图切成特效帧序列
 	var frames = SpriteFrames.new()
 	frames.add_animation("fx")
 	var frame_width = texture.get_width() / float(frame_count)
@@ -275,6 +298,7 @@ func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> Sprit
 	return frames
 
 func _play_consume_animation() -> void:
+	# 通过轻微缩放强调回血
 	if not player_health_bar:
 		return
 	var base_scale = player_health_bar.scale
@@ -285,6 +309,7 @@ func _play_consume_animation() -> void:
 
 # --- 🎒 背包开关动画逻辑 (保持你的原有代码不变) ---
 func _on_bag_button_pressed() -> void:
+	# 背包按钮逻辑：打开/关闭并触发消耗
 	if not inventory_panel: return
 	if inventory_panel.visible and inventory_panel.modulate.a > 0.1:
 		_close_inventory_animation()
@@ -293,6 +318,7 @@ func _on_bag_button_pressed() -> void:
 		_open_inventory_animation()
 
 func _open_inventory_animation():
+	# 打开背包的弹出动画
 	inventory_panel.visible = true
 	var tween = create_tween().set_parallel(true)
 	inventory_panel.position = origin_pos + Vector2(0, 50)
@@ -301,6 +327,7 @@ func _open_inventory_animation():
 	tween.tween_property(inventory_panel, "modulate:a", 1.0, 0.2)
 
 func _close_inventory_animation():
+	# 关闭背包的收起动画
 	var tween = create_tween().set_parallel(true)
 	tween.tween_property(inventory_panel, "position", origin_pos + Vector2(0, 50), 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 	tween.tween_property(inventory_panel, "modulate:a", 0.0, 0.2)

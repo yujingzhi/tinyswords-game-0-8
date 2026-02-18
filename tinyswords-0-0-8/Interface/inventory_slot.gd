@@ -1,5 +1,6 @@
 extends TextureRect
 class_name InventorySlot # 注册格子类
+# 背包/快捷栏格子：显示图标与数量，并处理拖拽与点击
 
 # 引用子节点 (注意：这里找的是 Icon 和 Amount，不是树木的动画！)
 @onready var icon_node: TextureRect = $Icon
@@ -8,10 +9,12 @@ var item_type: String = ""
 var count: int = 0
 var slot_role: String = "inventory"
 var slot_index: int = -1
+# slot_role 用于区分“背包格子”与“快捷栏格子”
 
 # --- 🔄 被动接收指令 ---
 # Interface 叫它显示啥，它就显示啥，绝不自己做运算
 func update_slot(item_texture: Texture2D, item_count: int, new_item_type: String = "") -> void:
+	# 根据传入数据刷新图标与数量
 	item_type = new_item_type
 	self.count = item_count
 	if item_texture:
@@ -40,6 +43,7 @@ func _play_bounce_animation() -> void:
 	tween.tween_property(amount_label, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_SPRING)
 
 func _get_drag_data(_at_position: Vector2) -> Variant:
+	# 拖拽开始时返回数据，并创建预览图
 	if item_type == "":
 		return null
 	var global_size = icon_node.get_global_rect().size
@@ -55,6 +59,7 @@ func _get_drag_data(_at_position: Vector2) -> Variant:
 	return {"item_type": item_type, "count": count}
 
 func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+	# 只有快捷栏允许放入物品
 	if slot_role != "quick":
 		return false
 	if data is Dictionary and data.has("item_type"):
@@ -62,6 +67,7 @@ func _can_drop_data(_at_position: Vector2, data: Variant) -> bool:
 	return false
 
 func _drop_data(_at_position: Vector2, data: Variant) -> void:
+	# 把拖拽物品放入快捷栏
 	if slot_role != "quick":
 		return
 	if data is Dictionary and data.has("item_type"):
@@ -70,6 +76,7 @@ func _drop_data(_at_position: Vector2, data: Variant) -> void:
 			interface.assign_quick_slot(slot_index, data["item_type"])
 
 func _gui_input(event: InputEvent) -> void:
+	# 左键点击快捷栏时直接使用物品
 	if slot_role != "quick":
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:

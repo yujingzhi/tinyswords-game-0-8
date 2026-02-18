@@ -1,32 +1,39 @@
 extends StaticBody2D
 class_name ObjectBase # 注册为全局类，方便以后类型提示
+# 可破坏的场景物体基类，例如树与矿石
 
 # --- 🌲 原有表现层配置 ---
 @export var object_type: String = "Tree_" 
 @export var variation_count: int = 4      
+# object_type + variation 组合出动画名，例如 Tree_1
 
 # --- ✨ 核心配置：生命与掉落 ---
 @export_category("Object Stats")
 @export var type: String = "Tree"          
 @export var health: int = 6               
+# type 用于工具匹配，health 为可破坏生命值
 
 # 🔥🔥🔥 新增：物品掉落系统 🔥🔥🔥
 @export_group("Drop Settings")
 # 【导师注】核心参数！在编辑器里，Tree 填 "wood"，Gold 填 "gold"
 @export var drop_item_type: String = "wood" 
+# 掉落的物品类型字符串
 
 @export var min_drop: int = 1  # 每次最少掉落几个
 @export var max_drop: int = 3  # 每次最多掉落几个
 @export var drop_item_scene: PackedScene # 掉落物预制体 (PhysicItem.tscn)
 @export var drop_item_texture: Texture2D # (保留原有配置)
+# drop_item_scene 决定掉落物实例的类型
 
 # --- 🔗 节点引用 ---
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var aux_anim_player: AnimationPlayer = $AuxAnimationPlayer 
+# aux_anim_player 用于播放受击闪烁
 
 # --- 🚀 生命周期 ---
 func _ready() -> void:
+	# 初始化随机外观，并加入障碍物分组
 	add_to_group("obstacle")
 	# 【导师修正】Godot 4.x 推荐使用 randi_range() 进行安全且均等的区间随机
 	if variation_count > 0:
@@ -44,6 +51,7 @@ func _ready() -> void:
 
 # --- ⚔️ 受伤逻辑 ---
 func update_health(damage: int) -> void:
+	# 受到伤害时扣血并播放受击动画
 	# 严格的类型注解与防错
 	var player: Node = get_tree().get_first_node_in_group("peao") 
 	var dist: String = "未知"
@@ -52,7 +60,7 @@ func update_health(damage: int) -> void:
 		dist = str(int(global_position.distance_to(player.global_position)))
 	
 	print("🔴 受击物体: ", name, " | 距离主角: ", dist)
-
+	
 	# 扣血并播放闪白动画
 	health -= damage
 	if is_instance_valid(aux_anim_player) and aux_anim_player.has_animation("hit"):
@@ -64,6 +72,7 @@ func update_health(damage: int) -> void:
 
 # --- 💀 死亡逻辑 (终极完整版) ---
 func die() -> void:
+	# 死亡后生成掉落物并销毁自身
 	print("💀 物体死亡: ", name, " | 准备掉落: ", drop_item_type)
 	
 	if drop_item_scene:

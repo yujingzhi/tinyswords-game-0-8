@@ -1,6 +1,8 @@
 extends Node
+# 调试用体检脚本：检查角色与掉落配置是否正确
 
 func _ready() -> void:
+	# 延迟一点点，等待其他节点完成初始化
 	print("\n================ 🕵️‍♂️ 游戏体检开始 ================")
 	await get_tree().create_timer(1.0).timeout # 等1秒让其他东西先生成完
 	
@@ -13,7 +15,7 @@ func _ready() -> void:
 	else:
 		printerr("❌ 主角检查失败: 没找到组名为 'peao' 的节点！")
 		printerr("   -> 解决办法: 选中主角根节点 -> 节点(Node)面板 -> 分组 -> 添加 'peao'")
-
+	
 	# --- 2. 检查关卡配置 (Level) ---
 	var level = get_parent() # 假设你把这个脚本挂在 Level 下面
 	if "object_scenes" in level:
@@ -37,10 +39,11 @@ func _ready() -> void:
 					instance.queue_free()
 	else:
 		print("⚠️ 警告: 父节点好像不是 Level (没找到 object_scenes 变量)，跳过地图检查。")
-
+	
 	print("================ 👨‍⚕️ 体检结束 ================\n")
 
 func _check_drop_config(obj):
+	# 检查掉落物场景与碰撞配置是否完整
 	if "drop_item_scene" in obj:
 		var drop_scn = obj.drop_item_scene
 		if drop_scn:

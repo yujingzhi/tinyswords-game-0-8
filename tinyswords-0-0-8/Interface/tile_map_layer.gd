@@ -1,15 +1,18 @@
 @tool
 extends TileMapLayer
+# 在编辑器中自动绘制 UI 面板边框的 TileMapLayer
 
 @export_category("背景尺寸设置")
 @export var grid_width: int = 3:
 	set(value):
+		# 最小宽度为 2，避免无法组成边框
 		grid_width = value
 		if grid_width < 2: grid_width = 2
 		_draw_panel()
 
 @export var grid_height: int = 3:
 	set(value):
+		# 最小高度为 2
 		grid_height = value
 		if grid_height < 2: grid_height = 2
 		_draw_panel()
@@ -25,11 +28,14 @@ const CELL_R  = Vector2i(20, 12)
 const CELL_BL = Vector2i(0, 20)
 const CELL_B  = Vector2i(12, 20)
 const CELL_BR = Vector2i(20, 20)
+# 上面是九宫格各个位置的瓦片坐标
 
 func _ready():
+	# 进入场景时绘制一次
 	_draw_panel()
 
 func _draw_panel():
+	# 根据宽高重新绘制九宫格背景
 	print("正在绘制面板... 宽:", grid_width, " 高:", grid_height) # 看输出面板有没有这就话
 	clear()
 	

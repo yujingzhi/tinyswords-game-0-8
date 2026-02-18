@@ -1,4 +1,5 @@
 extends CharacterBody2D
+# 弓箭手敌人：巡逻、寻找玩家、发射箭矢
 
 @export var max_health: int = 3
 @export var roam_radius: float = 120.0
@@ -23,9 +24,11 @@ extends CharacterBody2D
 @export var arrow_scene: PackedScene
 @export var hit_flash_color: Color = Color(1, 0.4, 0.4, 1)
 @export var hit_flash_time: float = 0.12
+# 上面是可在编辑器中调参的内容：血量、巡逻范围、动画和射击配置
 
 @onready var anim: AnimatedSprite2D = $AnimatedSprite2D
 @onready var health_bar: TextureProgressBar = $HealthBar/Fill
+# health_bar 用于显示敌人的血量
 
 var current_health: int
 var shoot_timer: float = 0.0
@@ -42,8 +45,10 @@ var hit_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Explosion_01.png"), "frames": 8},
 	{"texture": preload("res://Assets/FX/Particles/Explosion_02.png"), "frames": 10}
 ]
+# hit_fx_defs 定义受击时的爆炸特效
 
 func _ready() -> void:
+	# 初始化敌人，加入敌人分组并设置血量
 	add_to_group("enemy")
 	current_health = max_health
 	_update_health_bar()
@@ -52,6 +57,7 @@ func _ready() -> void:
 	_enter_idle()
 
 func _physics_process(delta: float) -> void:
+	# 处理射击冷却与巡逻逻辑
 	shoot_timer -= delta
 	if anim_timer > 0.0:
 		anim_timer -= delta
@@ -60,7 +66,7 @@ func _physics_process(delta: float) -> void:
 		if anim_timer <= 0.0:
 			_enter_idle()
 		return
-
+	# 查找玩家，进入攻击距离就射击
 	var player = get_tree().get_first_node_in_group("peao")
 	if player != null:
 		var distance_to_player = global_position.distance_to(player.global_position)
@@ -88,6 +94,7 @@ func _physics_process(delta: float) -> void:
 			_enter_move()
 
 func take_damage(amount: int) -> void:
+	# 受击后扣血并播放闪烁效果
 	current_health = max(current_health - amount, 0)
 	_update_health_bar()
 	if anim:
@@ -106,6 +113,7 @@ func take_damage(amount: int) -> void:
 		queue_free()
 
 func _spawn_hit_fx() -> void:
+	# 随机选择受击特效
 	if hit_fx_defs.is_empty():
 		return
 	var fx = hit_fx_defs.pick_random()
@@ -114,6 +122,7 @@ func _spawn_hit_fx() -> void:
 	_spawn_world_fx(texture, frame_count, global_position + Vector2(0, -10), Vector2(0.6, 0.6))
 
 func _spawn_world_fx(texture: Texture2D, frame_count: int, fx_position: Vector2, fx_scale: Vector2) -> void:
+	# 在世界中播放一次性特效
 	if texture == null or frame_count <= 0:
 		return
 	var sprite_fx = AnimatedSprite2D.new()
@@ -135,6 +144,7 @@ func _spawn_world_fx(texture: Texture2D, frame_count: int, fx_position: Vector2,
 	tween.chain().tween_callback(sprite_fx.queue_free)
 
 func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> SpriteFrames:
+	# 将贴图切成多帧动画
 	var frames = SpriteFrames.new()
 	frames.add_animation("fx")
 	var frame_width = texture.get_width() / float(frame_count)
@@ -149,6 +159,7 @@ func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> Sprit
 	return frames
 
 func _shoot(target_global_position: Vector2) -> void:
+	# 发射箭矢：进入射击动画并生成箭
 	shoot_timer = shoot_interval
 	if anim:
 		anim.play("shoot")
@@ -167,6 +178,7 @@ func _shoot(target_global_position: Vector2) -> void:
 			get_parent().add_child(arrow)
 
 func _build_animations() -> void:
+	# 根据贴图构建 idle/move/shoot 三套动画
 	if anim == null:
 		return
 	var frames = SpriteFrames.new()
@@ -179,6 +191,7 @@ func _build_animations() -> void:
 	anim.sprite_frames = frames
 
 func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, frame_count: int, fps: float) -> void:
+	# 将一张横向帧贴图切成动画
 	if texture == null:
 		return
 	frames.add_animation(anim_name)
@@ -193,17 +206,20 @@ func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, fra
 	frames.set_animation_speed(anim_name, fps)
 
 func _update_health_bar() -> void:
+	# 更新血条的最大值和当前值
 	if health_bar:
 		health_bar.max_value = max_health
 		health_bar.value = current_health
 
 func _enter_idle() -> void:
+	# 进入待机状态
 	state = "idle"
 	state_timer = randf_range(idle_time_range.x, idle_time_range.y)
 	if anim:
 		anim.play("idle")
 
 func _enter_move() -> void:
+	# 进入移动状态，选择随机目标点
 	state = "move"
 	state_timer = randf_range(move_time_range.x, move_time_range.y)
 	if roam_cells.is_empty():
@@ -215,12 +231,14 @@ func _enter_move() -> void:
 		anim.play("move")
 
 func setup_roam(layer: TileMapLayer, cell: Vector2i, radius_cells: int) -> void:
+	# 设定巡逻使用的瓦片层与范围
 	roam_layer = layer
 	home_cell = cell
 	home_position = roam_layer.map_to_local(home_cell)
 	roam_cells = _collect_cells_in_radius(roam_layer.get_used_cells(), home_cell, radius_cells)
 
 func _collect_cells_in_radius(cells: Array[Vector2i], center: Vector2i, radius_cells: int) -> Array[Vector2i]:
+	# 过滤出半径内的瓦片坐标
 	var result: Array[Vector2i] = []
 	var center_vec = Vector2(center)
 	for c in cells:

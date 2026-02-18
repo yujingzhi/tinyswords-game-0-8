@@ -1,5 +1,6 @@
 extends RigidBody2D
 class_name PhysicItem
+# 掉落物逻辑：生成时弹起、玩家接触拾取、播放特效与音效
 
 @export_category("Drop Settings")
 # 🌟 优化 1：整合了 Setter 逻辑，删除了下方冗余的 set_item_type 函数
@@ -17,29 +18,34 @@ const ITEM_TEXTURES: Dictionary = {
 	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png")
 	# 未来扩展示范： "stone": preload("res://Base_Object/Stone.png")
 }
+# ITEM_TEXTURES 是“物品类型 -> 贴图”映射表
 var pickup_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Dust_01.png"), "frames": 8},
 	{"texture": preload("res://Assets/FX/Particles/Dust_02.png"), "frames": 10},
 	{"texture": preload("res://Assets/FX/Particles/Water Splash.png"), "frames": 9}
 ]
+# 拾取时随机播放的粒子特效配置
 
 @export_category("Audio")
 @export var sfx_drop: AudioStream   
 @export var sfx_pickup: AudioStream 
 @export var is_static_spawn: bool = false 
+# is_static_spawn 为 true 表示静态生成，不做弹起动画
 
 @onready var audio_player: AudioStreamPlayer2D = $AudioPlayer
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var pickup_area: Area2D = $Area2D 
+# pickup_area 用于检测玩家接近
 
 func _ready() -> void:
+	# 初始化碰撞层，并连接拾取回调
 	set_deferred("collision_mask", 1) 
 	
 	if is_instance_valid(pickup_area) and not pickup_area.body_entered.is_connected(_on_pickup_area_body_entered):
 		pickup_area.body_entered.connect(_on_pickup_area_body_entered)
 		
 	_refresh_texture()
-	
+	# 非静态生成时增加弹跳与缩放效果
 	if not is_static_spawn:
 		set_deferred("lock_rotation", true) 
 		# 🌟 优化 3：全面补充强类型声明 (Vector2, Tween)
@@ -58,6 +64,7 @@ func _ready() -> void:
 			jump_tween.tween_property(sprite, "offset:y", 0.0, 0.2).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
 func _refresh_texture() -> void:
+	# 根据 item_type 切换贴图
 	if is_instance_valid(sprite):
 		# 🌟 优化 2 配合：直接从字典取图。如果找不到对应的，默认给 wood (防错设计)
 		sprite.texture = ITEM_TEXTURES.get(item_type, ITEM_TEXTURES["wood"])
@@ -65,7 +72,7 @@ func _refresh_texture() -> void:
 func _on_pickup_area_body_entered(body: Node2D) -> void:
 	# 🌟 优化 5：使用 &"字符串" (StringName) 提升底层分组查询性能
 	if body is CharacterBase or body.is_in_group(&"player") or body.is_in_group(&"peao"):
-		# 完美联动 UI 系统
+		# 通知 UI 增加物品数量
 		get_tree().call_group(&"interface", &"add_item", item_type, 1)
 		spawn_floating_text()
 		_spawn_pickup_fx()
@@ -78,6 +85,7 @@ func _on_pickup_area_body_entered(body: Node2D) -> void:
 		_animate_pickup_and_free(body)
 
 func _animate_pickup_and_free(target: Node2D) -> void:
+	# 拾取时向玩家飞去并淡出销毁
 	set_deferred("freeze", true) 
 	if is_instance_valid(pickup_area):
 		pickup_area.set_deferred("monitoring", false) 
@@ -90,6 +98,7 @@ func _animate_pickup_and_free(target: Node2D) -> void:
 	tween.chain().tween_callback(queue_free)
 
 func spawn_floating_text() -> void:
+	# 创建飘字提示 +1
 	var label: Label = Label.new()
 	label.text = "+1" 
 	var settings: LabelSettings = LabelSettings.new()
@@ -114,6 +123,7 @@ func spawn_floating_text() -> void:
 	scale_tween.tween_property(label, "scale", Vector2(1.0, 1.0), 0.18).set_trans(Tween.TRANS_SPRING)
 
 func _spawn_pickup_fx() -> void:
+	# 拾取时播放粒子特效
 	if pickup_fx_defs.is_empty():
 		return
 	var fx = pickup_fx_defs.pick_random()
@@ -140,6 +150,7 @@ func _spawn_pickup_fx() -> void:
 	tween.chain().tween_callback(fx_sprite.queue_free)
 
 func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> SpriteFrames:
+	# 将贴图切成动画帧
 	var frames = SpriteFrames.new()
 	frames.add_animation("fx")
 	var frame_width = texture.get_width() / float(frame_count)
