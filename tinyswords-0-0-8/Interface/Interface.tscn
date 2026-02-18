@@ -102,9 +102,49 @@ y_sort_enabled = true
 [node name="peao" parent="Objects" unique_id=375913134 instance=ExtResource("2_tnt0s")]
 y_sort_enabled = false
 
+[node name="GameCamera" type="Camera2D" parent="Objects/peao" unique_id=1291813456]
+
 [node name="Interface" type="CanvasLayer" parent="." unique_id=1617725814 groups=["interface"]]
 script = ExtResource("2_l3g71")
 slot_scene = ExtResource("7_o153u")
+
+[node name="DebugLabel" type="Label" parent="Interface" unique_id=1751239023]
+visible = false
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 520.0
+offset_bottom = 260.0
+theme_override_colors/font_color = Color(0.92, 0.96, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 16
+
+[node name="ResourceHUD" type="HBoxContainer" parent="Interface" unique_id=1204253897]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = 36.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_constants/separation = 12
+
+[node name="WoodLabel" type="Label" parent="Interface/ResourceHUD" unique_id=72742961]
+layout_mode = 2
+text = "木材 0"
+label_settings = SubResource("LabelSettings_gweiw")
+
+[node name="GoldLabel" type="Label" parent="Interface/ResourceHUD" unique_id=905974658]
+layout_mode = 2
+text = "矿石 0"
+label_settings = SubResource("LabelSettings_gweiw")
+
+[node name="MeatLabel" type="Label" parent="Interface/ResourceHUD" unique_id=1712733828]
+layout_mode = 2
+text = "肉 0"
+label_settings = SubResource("LabelSettings_gweiw")
 
 [node name="PlayerHealthBar" type="TextureProgressBar" parent="Interface" unique_id=1226431299]
 clip_contents = true

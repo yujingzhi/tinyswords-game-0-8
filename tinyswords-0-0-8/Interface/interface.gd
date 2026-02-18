@@ -9,6 +9,9 @@ class_name Interface # 注册大管家
 @onready var player_health_bar: TextureProgressBar = $PlayerHealthBar/Fill
 @onready var player_stamina_bar: TextureProgressBar = $PlayerStaminaBar/Fill
 @onready var quickbar_container: HBoxContainer = $QuickBar
+@onready var wood_label: Label = $ResourceHUD/WoodLabel
+@onready var gold_label: Label = $ResourceHUD/GoldLabel
+@onready var meat_label: Label = $ResourceHUD/MeatLabel
 # 这些节点分别对应 UI 中的背包、格子和血条等元素
 
 # --- 🔥 配置区域 ---
@@ -58,6 +61,7 @@ func _ready() -> void:
 		# 游戏开始时刷新一次空背包
 		refresh_inventory_ui()
 	_refresh_quickbar_ui()
+	_update_resource_hud()
 	call_deferred("_sync_player_bars")
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -121,6 +125,15 @@ func refresh_inventory_ui() -> void:
 			# 种类发完了，剩下的全是空格子
 			slot.update_slot(null, 0, "")
 	_refresh_quickbar_ui()
+	_update_resource_hud()
+
+func _update_resource_hud() -> void:
+	if wood_label:
+		wood_label.text = "木材 " + str(inventory_data.get("wood", 0))
+	if gold_label:
+		gold_label.text = "矿石 " + str(inventory_data.get("gold", 0))
+	if meat_label:
+		meat_label.text = "肉 " + str(inventory_data.get("meat", 0))
 
 # --- ⚔️ 武器栏逻辑 ---
 # --- ⚔️ 武器栏高级视觉交互 ---
@@ -251,6 +264,7 @@ func _consume_meat(source: String) -> bool:
 	if not fx.is_empty():
 		_spawn_world_fx(fx["texture"], int(fx["frames"]), player.global_position + Vector2(0, -12), Vector2(1.0, 1.0))
 	refresh_inventory_ui()
+	get_tree().call_group("sheep", "apply_speed_boost", 2.0, 8.0)
 	print("肉消耗成功 | 来源=", source, " | 治疗=", heal_amount, " | HP=", int(round(new_health)), "/", max_health, " | MeatLeft=", inventory_data["meat"])
 	return true
 

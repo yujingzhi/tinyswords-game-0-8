@@ -1,4 +1,3 @@
-@tool
 extends TileMapLayer
 # 在编辑器中自动绘制 UI 面板边框的 TileMapLayer
 

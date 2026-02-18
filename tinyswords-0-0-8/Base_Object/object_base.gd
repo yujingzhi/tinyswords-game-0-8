@@ -2,6 +2,8 @@ extends StaticBody2D
 class_name ObjectBase # 注册为全局类，方便以后类型提示
 # 可破坏的场景物体基类，例如树与矿石
 
+signal destroyed(object_type: String, drop_type: String, world_position: Vector2)
+
 # --- 🌲 原有表现层配置 ---
 @export var object_type: String = "Tree_" 
 @export var variation_count: int = 4      
@@ -74,6 +76,7 @@ func update_health(damage: int) -> void:
 func die() -> void:
 	# 死亡后生成掉落物并销毁自身
 	print("💀 物体死亡: ", name, " | 准备掉落: ", drop_item_type)
+	destroyed.emit(type, drop_item_type, global_position)
 	
 	if drop_item_scene:
 		var final_drop_count = randi_range(min_drop, max_drop)

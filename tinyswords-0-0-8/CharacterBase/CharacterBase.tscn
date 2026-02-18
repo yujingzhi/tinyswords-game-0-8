@@ -25,5 +25,3 @@ sfx_hand = ExtResource("6_usjsn")
 rotation = 1.5707964
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1823335232]
-
-[node name="Camera2D" type="Camera2D" parent="." unique_id=160000158]

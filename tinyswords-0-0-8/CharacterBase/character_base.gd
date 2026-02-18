@@ -30,6 +30,7 @@ class_name CharacterBase
 @export var sfx_sharp: AudioStream            
 @export var sfx_knife: AudioStream            
 @export var sfx_hand: AudioStream             
+
 # 不同工具或材质触发不同音效
 
 # ✨ 优化：使用强类型的枚举来定义工具
@@ -105,7 +106,6 @@ func _ready() -> void:
 		attack_range = (attack_area_collision.shape as CircleShape2D).radius + 6.0
 
 func _unhandled_input(event: InputEvent) -> void:
-	# 攻击时不允许切换武器或再次攻击
 	if is_attacking:
 		return
 

@@ -40,6 +40,7 @@ var pickup_fx_defs: Array[Dictionary] = [
 func _ready() -> void:
 	# 初始化碰撞层，并连接拾取回调
 	set_deferred("collision_mask", 1) 
+	add_to_group(&"pickup_item")
 	
 	if is_instance_valid(pickup_area) and not pickup_area.body_entered.is_connected(_on_pickup_area_body_entered):
 		pickup_area.body_entered.connect(_on_pickup_area_body_entered)
@@ -71,6 +72,12 @@ func _refresh_texture() -> void:
 
 func _on_pickup_area_body_entered(body: Node2D) -> void:
 	# 🌟 优化 5：使用 &"字符串" (StringName) 提升底层分组查询性能
+	if body.has_method("receive_pickup"):
+		var accepted = body.call("receive_pickup", item_type)
+		if accepted:
+			_spawn_pickup_fx()
+			_animate_pickup_and_free(body)
+		return
 	if body is CharacterBase or body.is_in_group(&"player") or body.is_in_group(&"peao"):
 		# 通知 UI 增加物品数量
 		get_tree().call_group(&"interface", &"add_item", item_type, 1)
@@ -83,6 +90,16 @@ func _on_pickup_area_body_entered(body: Node2D) -> void:
 			audio_player.play()
 		
 		_animate_pickup_and_free(body)
+
+func auto_collect() -> void:
+	get_tree().call_group(&"interface", &"add_item", item_type, 1)
+	spawn_floating_text()
+	_spawn_pickup_fx()
+	if is_instance_valid(audio_player) and sfx_pickup:
+		audio_player.stream = sfx_pickup
+		audio_player.pitch_scale = randf_range(1.1, 1.3)
+		audio_player.play()
+	queue_free()
 
 func _animate_pickup_and_free(target: Node2D) -> void:
 	# 拾取时向玩家飞去并淡出销毁

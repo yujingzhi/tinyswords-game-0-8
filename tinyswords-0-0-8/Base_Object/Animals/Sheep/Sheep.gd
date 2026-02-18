@@ -8,6 +8,9 @@ class_name Sheep
 @export var idle_fps: float = 6.0
 @export var move_fps: float = 8.0
 @export var grass_fps: float = 8.0
+@export var idle_frame_count: int = 6
+@export var move_frame_count: int = 4
+@export var grass_frame_count: int = 12
 @export var idle_time_range: Vector2 = Vector2(0.6, 1.6)
 @export var move_time_range: Vector2 = Vector2(0.8, 1.8)
 @export var eat_chance: float = 0.35
@@ -19,9 +22,36 @@ class_name Sheep
 @export var idle_texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Idle.png")
 @export var move_texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Move.png")
 @export var grass_texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Grass.png")
+@export var worker_mode: bool = false
+@export var worker_scan_interval: float = 0.6
+@export var worker_gather_radius: float = 260.0
+@export var worker_harvest_range: float = 18.0
+@export var worker_harvest_damage: int = 1
+@export var worker_harvest_time: float = 0.6
+@export var worker_pickup_range: float = 16.0
+@export var worker_storage_range: float = 18.0
+@export var worker_carry_capacity: int = 1
+@export var worker_wander_radius: float = 320.0
+@export var worker_wander_interval: float = 1.2
+@export var worker_empty_idle_texture: Texture2D
+@export var worker_empty_move_texture: Texture2D
+@export var worker_carry_idle_texture: Texture2D
+@export var worker_carry_move_texture: Texture2D
+@export var worker_axe_texture: Texture2D
+@export var worker_pickaxe_texture: Texture2D
+@export var worker_knife_texture: Texture2D
+@export var worker_work_frame_count: int = 6
+@export var worker_work_fps: float = 10.0
+@export var logistics_enabled: bool = true
+@export var logistics_scan_interval: float = 0.6
+@export var logistics_pickup_radius: float = 220.0
+@export var logistics_drop_radius: float = 18.0
+@export var logistics_group: StringName = &"sheep"
 # 上面都是可在编辑器中调整的参数，包括移动范围、动画速度和掉落
 
 @onready var anim: AnimatedSprite2D = $AnimatedSprite2D
+@onready var carry_sprite: Sprite2D = $CarrySprite
+@onready var carry_label: Label = $CarryLabel
 # AnimatedSprite2D 用于播放帧动画
 
 var home_position: Vector2
@@ -32,26 +62,63 @@ var roam_layer: TileMapLayer
 var roam_cells: Array[Vector2i] = []
 var home_cell: Vector2i
 var hit_tween: Tween
+var base_move_speed: float = 0.0
+var logistics_multiplier: float = 1.0
+var boost_multiplier: float = 1.0
+var boost_timer: float = 0.0
+var logistics_scan_timer: float = 0.0
+var logistics_target_item: Node2D
+var logistics_target_pile: Node2D
+var logistics_carrying: bool = false
+var worker_target_resource: Node2D
+var worker_target_item: Node2D
+var worker_harvest_timer: float = 0.0
+var worker_scan_timer: float = 0.0
+var worker_carry_item_type: String = ""
+var worker_carry_count: int = 0
+var worker_storage_target: Node2D
+var worker_wander_timer: float = 0.0
+var worker_wander_target: Vector2 = Vector2.ZERO
+var worker_wander_active: bool = false
 var hit_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Dust_01.png"), "frames": 8},
 	{"texture": preload("res://Assets/FX/Particles/Dust_02.png"), "frames": 10}
 ]
+const WORKER_CARRY_TEXTURES: Dictionary = {
+	"wood": preload("res://Base_Object/Wood_Resource.png"),
+	"gold": preload("res://Base_Object/Gold_Resource.png"),
+	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png")
+}
 # hit_fx_defs 用于受击时随机播放沙尘特效
 
 func _ready() -> void:
 	# 初始化出生位置与动画
+	add_to_group(logistics_group)
+	base_move_speed = move_speed
 	home_position = global_position
 	_build_animations()
 	_enter_idle()
+	_update_carry_visual()
 
 func _physics_process(delta: float) -> void:
 	# 简单状态机：move 与 idle/grass 之间切换
+	if boost_timer > 0.0:
+		boost_timer -= delta
+		if boost_timer <= 0.0:
+			boost_timer = 0.0
+			boost_multiplier = 1.0
+	if worker_mode:
+		_update_worker(delta)
+		return
+	if _handle_logistics(delta):
+		return
 	if state == "move":
 		var to_target = target_position - global_position
 		if to_target.length() <= 2.0:
 			_enter_idle()
 		else:
-			velocity = to_target.normalized() * move_speed
+			var final_speed = base_move_speed * logistics_multiplier * boost_multiplier
+			velocity = to_target.normalized() * final_speed
 			move_and_slide()
 			anim.flip_h = velocity.x < 0
 	else:
@@ -79,6 +146,17 @@ func take_damage(amount: int) -> void:
 	print("Sheep受击 | 伤害=", amount, " | HP=", health)
 	if health <= 0:
 		_die()
+
+func receive_pickup(pickup_type: String) -> bool:
+	if not worker_mode:
+		return false
+	if worker_carry_count > 0:
+		return false
+	worker_carry_item_type = pickup_type
+	worker_carry_count = min(worker_carry_capacity, 1)
+	worker_target_item = null
+	_update_carry_visual()
+	return true
 
 func _spawn_hit_fx() -> void:
 	# 随机选取尘土特效
@@ -150,9 +228,16 @@ func _enter_move() -> void:
 func _build_animations() -> void:
 	# 将多张贴图切成动画并组合成 SpriteFrames
 	var frames = SpriteFrames.new()
-	_add_strip(frames, "idle", idle_texture, 6, idle_fps)
-	_add_strip(frames, "move", move_texture, 4, move_fps)
-	_add_strip(frames, "grass", grass_texture, 12, grass_fps)
+	_add_strip(frames, "idle", idle_texture, idle_frame_count, idle_fps)
+	_add_strip(frames, "move", move_texture, move_frame_count, move_fps)
+	_add_strip(frames, "grass", grass_texture, grass_frame_count, grass_fps)
+	_add_strip(frames, "idle_empty", worker_empty_idle_texture, idle_frame_count, idle_fps)
+	_add_strip(frames, "move_empty", worker_empty_move_texture, move_frame_count, move_fps)
+	_add_strip(frames, "idle_carry", worker_carry_idle_texture, idle_frame_count, idle_fps)
+	_add_strip(frames, "move_carry", worker_carry_move_texture, move_frame_count, move_fps)
+	_add_strip(frames, "work_axe", worker_axe_texture, worker_work_frame_count, worker_work_fps)
+	_add_strip(frames, "work_pickaxe", worker_pickaxe_texture, worker_work_frame_count, worker_work_fps)
+	_add_strip(frames, "work_knife", worker_knife_texture, worker_work_frame_count, worker_work_fps)
 	anim.sprite_frames = frames
 
 func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, frame_count: int, fps: float) -> void:
@@ -201,3 +286,308 @@ func _collect_cells_in_radius(cells: Array[Vector2i], center: Vector2i, radius_c
 		if (Vector2(c) - center_vec).length() <= radius_cells:
 			result.append(c)
 	return result
+
+func apply_speed_boost(multiplier: float, duration: float) -> void:
+	boost_multiplier = max(1.0, multiplier)
+	boost_timer = max(0.0, duration)
+
+func set_logistics_multiplier(multiplier: float) -> void:
+	logistics_multiplier = max(0.1, multiplier)
+
+func set_logistics_enabled(enabled: bool) -> void:
+	logistics_enabled = enabled
+	if not logistics_enabled:
+		logistics_target_item = null
+		logistics_target_pile = null
+		logistics_carrying = false
+
+func _handle_logistics(delta: float) -> bool:
+	if not logistics_enabled:
+		return false
+	if logistics_target_pile == null or not is_instance_valid(logistics_target_pile):
+		logistics_target_pile = _pick_nearest_pile()
+	if logistics_target_pile == null:
+		return false
+	logistics_scan_timer -= delta
+	if logistics_scan_timer <= 0.0:
+		logistics_scan_timer = logistics_scan_interval
+		if not logistics_carrying:
+			if logistics_target_item == null or not is_instance_valid(logistics_target_item):
+				logistics_target_item = _find_nearest_item()
+	if logistics_carrying:
+		if _move_to_position(logistics_target_pile.global_position, logistics_drop_radius):
+			logistics_carrying = false
+		return true
+	if logistics_target_item == null or not is_instance_valid(logistics_target_item):
+		return false
+	if _move_to_position(logistics_target_item.global_position, 10.0):
+		if logistics_target_item.has_method("auto_collect"):
+			logistics_target_item.call("auto_collect")
+		logistics_target_item = null
+		logistics_carrying = true
+	return true
+
+func _move_to_position(position: Vector2, reach_distance: float) -> bool:
+	var to_target = position - global_position
+	if to_target.length() <= reach_distance:
+		velocity = Vector2.ZERO
+		return true
+	state = "move"
+	anim.play("move")
+	var final_speed = base_move_speed * logistics_multiplier * boost_multiplier
+	velocity = to_target.normalized() * final_speed
+	move_and_slide()
+	anim.flip_h = velocity.x < 0
+	return false
+
+func _find_nearest_item() -> Node2D:
+	var items = get_tree().get_nodes_in_group("pickup_item")
+	var nearest: Node2D = null
+	var best_dist = logistics_pickup_radius
+	for item in items:
+		if not (item is Node2D):
+			continue
+		if not is_instance_valid(item):
+			continue
+		var d = global_position.distance_to(item.global_position)
+		if d <= best_dist:
+			best_dist = d
+			nearest = item
+	return nearest
+
+func _pick_nearest_pile() -> Node2D:
+	var piles = get_tree().get_nodes_in_group("collection_pile")
+	var nearest: Node2D = null
+	var best_dist = INF
+	for pile in piles:
+		if not (pile is Node2D):
+			continue
+		if not is_instance_valid(pile):
+			continue
+		var d = global_position.distance_to(pile.global_position)
+		if d < best_dist:
+			best_dist = d
+			nearest = pile
+	return nearest
+
+func _update_worker(delta: float) -> void:
+	_update_carry_visual()
+	worker_scan_timer -= delta
+	worker_wander_timer -= delta
+	if worker_carry_count > 0:
+		if worker_storage_target == null or not is_instance_valid(worker_storage_target):
+			worker_storage_target = _pick_nearest_storage()
+		if worker_storage_target != null:
+			if _worker_move_to_position(worker_storage_target.global_position, worker_storage_range):
+				get_tree().call_group(&"interface", &"add_item", worker_carry_item_type, worker_carry_count)
+				worker_carry_item_type = ""
+				worker_carry_count = 0
+				worker_target_item = null
+				worker_target_resource = null
+				_update_carry_visual()
+				_play_worker_idle()
+		else:
+			velocity = Vector2.ZERO
+			_play_worker_idle()
+		return
+	if worker_scan_timer <= 0.0:
+		worker_scan_timer = worker_scan_interval
+		var item_candidate = _find_nearest_pickup()
+		if item_candidate != null and is_instance_valid(item_candidate):
+			if worker_target_item == null or not is_instance_valid(worker_target_item):
+				worker_target_item = item_candidate
+			else:
+				var current_dist = global_position.distance_to(worker_target_item.global_position)
+				var candidate_dist = global_position.distance_to(item_candidate.global_position)
+				if candidate_dist < current_dist:
+					worker_target_item = item_candidate
+		var resource_candidate = _find_nearest_resource_with_radius(INF)
+		if resource_candidate != null and is_instance_valid(resource_candidate):
+			if worker_target_resource == null or not is_instance_valid(worker_target_resource):
+				worker_target_resource = resource_candidate
+			else:
+				var current_res_dist = global_position.distance_to(worker_target_resource.global_position)
+				var candidate_res_dist = global_position.distance_to(resource_candidate.global_position)
+				if candidate_res_dist < current_res_dist:
+					worker_target_resource = resource_candidate
+	if worker_target_item != null:
+		worker_wander_active = false
+		if _worker_move_to_position(worker_target_item.global_position, worker_pickup_range):
+			if "item_type" in worker_target_item:
+				worker_carry_item_type = worker_target_item.item_type
+				worker_carry_count = min(worker_carry_capacity, 1)
+				_update_carry_visual()
+			worker_target_item.queue_free()
+			worker_target_item = null
+		return
+	if worker_target_resource == null or not is_instance_valid(worker_target_resource):
+		worker_target_resource = null
+	if worker_target_resource == null:
+		_update_worker_wander()
+		return
+	worker_wander_active = false
+	if _worker_move_to_position(worker_target_resource.global_position, worker_harvest_range):
+		worker_harvest_timer -= delta
+		if worker_harvest_timer <= 0.0:
+			worker_harvest_timer = worker_harvest_time
+			_play_worker_harvest_anim(worker_target_resource)
+			_apply_worker_harvest(worker_target_resource)
+	else:
+		worker_harvest_timer = worker_harvest_time
+
+func _find_nearest_resource() -> Node2D:
+	return _find_nearest_resource_with_radius(worker_gather_radius)
+
+func _find_nearest_resource_with_radius(radius: float) -> Node2D:
+	var nearest: Node2D = null
+	var best_dist = radius
+	var obstacles = get_tree().get_nodes_in_group("obstacle")
+	for obj in obstacles:
+		if not (obj is Node2D):
+			continue
+		if not is_instance_valid(obj):
+			continue
+		if "drop_item_type" in obj:
+			var drop_type = obj.drop_item_type
+			if drop_type != "wood" and drop_type != "gold":
+				continue
+		var d = global_position.distance_to(obj.global_position)
+		if d <= best_dist:
+			best_dist = d
+			nearest = obj
+	var sheep_list = get_tree().get_nodes_in_group(&"sheep")
+	for sheep in sheep_list:
+		if not (sheep is Node2D):
+			continue
+		if not is_instance_valid(sheep):
+			continue
+		if "worker_mode" in sheep and sheep.worker_mode:
+			continue
+		var dist = global_position.distance_to(sheep.global_position)
+		if dist <= best_dist:
+			best_dist = dist
+			nearest = sheep
+	return nearest
+
+func _find_nearest_pickup() -> Node2D:
+	var items = get_tree().get_nodes_in_group(&"pickup_item")
+	var nearest: Node2D = null
+	var best_dist = worker_gather_radius
+	for item in items:
+		if not (item is Node2D):
+			continue
+		if not is_instance_valid(item):
+			continue
+		var d = global_position.distance_to(item.global_position)
+		if d <= best_dist:
+			best_dist = d
+			nearest = item
+	return nearest
+
+func _pick_nearest_storage() -> Node2D:
+	var stores = get_tree().get_nodes_in_group(&"storage")
+	var nearest: Node2D = null
+	var best_dist = INF
+	for store in stores:
+		if not (store is Node2D):
+			continue
+		if not is_instance_valid(store):
+			continue
+		var d = global_position.distance_to(store.global_position)
+		if d < best_dist:
+			best_dist = d
+			nearest = store
+	return nearest
+
+func _play_worker_harvest_anim(target: Node2D) -> void:
+	if anim == null:
+		return
+	anim.flip_h = target.global_position.x < global_position.x
+	if target is ObjectBase:
+		if "drop_item_type" in target and target.drop_item_type == "gold":
+			anim.play("work_pickaxe")
+		else:
+			anim.play("work_axe")
+	elif target is Sheep:
+		anim.play("work_knife")
+
+func _apply_worker_harvest(target: Node2D) -> void:
+	if target == null or not is_instance_valid(target):
+		worker_target_resource = null
+		return
+	if target is ObjectBase:
+		target.update_health(worker_harvest_damage)
+		if not is_instance_valid(target):
+			worker_target_resource = null
+	elif target is Sheep:
+		if "worker_mode" in target and target.worker_mode:
+			return
+		target.take_damage(worker_harvest_damage)
+		if not is_instance_valid(target):
+			worker_target_resource = null
+
+func _update_carry_visual() -> void:
+	if carry_sprite == null:
+		return
+	if worker_carry_count <= 0 or worker_carry_item_type.is_empty():
+		carry_sprite.visible = false
+		if carry_label:
+			carry_label.visible = false
+		return
+	carry_sprite.visible = true
+	carry_sprite.texture = WORKER_CARRY_TEXTURES.get(worker_carry_item_type, WORKER_CARRY_TEXTURES["wood"])
+	if carry_label:
+		carry_label.visible = true
+		carry_label.text = str(worker_carry_count)
+
+func _worker_move_to_position(position: Vector2, reach_distance: float) -> bool:
+	var to_target = position - global_position
+	if to_target.length() <= reach_distance:
+		velocity = Vector2.ZERO
+		return true
+	state = "move"
+	_play_worker_move()
+	var final_speed = base_move_speed * logistics_multiplier * boost_multiplier
+	velocity = to_target.normalized() * final_speed
+	move_and_slide()
+	anim.flip_h = velocity.x < 0
+	return false
+
+func _worker_is_carrying() -> bool:
+	return worker_carry_count > 0 and not worker_carry_item_type.is_empty()
+
+func _play_worker_idle() -> void:
+	if anim == null:
+		return
+	if _worker_is_carrying() and anim.sprite_frames.has_animation("idle_carry"):
+		anim.play("idle_carry")
+	elif anim.sprite_frames.has_animation("idle_empty"):
+		anim.play("idle_empty")
+	else:
+		anim.play("idle")
+
+func _play_worker_move() -> void:
+	if anim == null:
+		return
+	if _worker_is_carrying() and anim.sprite_frames.has_animation("move_carry"):
+		anim.play("move_carry")
+	elif anim.sprite_frames.has_animation("move_empty"):
+		anim.play("move_empty")
+	else:
+		anim.play("move")
+
+func _update_worker_wander() -> void:
+	if worker_wander_active:
+		if _worker_move_to_position(worker_wander_target, 6.0):
+			worker_wander_active = false
+			worker_wander_timer = worker_wander_interval
+			_play_worker_idle()
+		return
+	if worker_wander_timer > 0.0:
+		state = "idle"
+		velocity = Vector2.ZERO
+		_play_worker_idle()
+		return
+	var offset = Vector2(randf_range(-worker_wander_radius, worker_wander_radius), randf_range(-worker_wander_radius, worker_wander_radius))
+	worker_wander_target = home_position + offset
+	worker_wander_active = true

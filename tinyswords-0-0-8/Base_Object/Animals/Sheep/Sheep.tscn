@@ -12,6 +12,18 @@ script = ExtResource("1_ewk04")
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=419102473]
 position = Vector2(0, -6)
 
+[node name="CarrySprite" type="Sprite2D" parent="." unique_id=1440163876]
+visible = false
+position = Vector2(0, -26)
+scale = Vector2(0.6, 0.6)
+
+[node name="CarryLabel" type="Label" parent="." unique_id=2066227561]
+visible = false
+offset_left = -6.0
+offset_top = -42.0
+offset_right = -6.0
+offset_bottom = -42.0
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=547708242]
 position = Vector2(0, 2)
 shape = SubResource("CircleShape2D_8ybbn")
