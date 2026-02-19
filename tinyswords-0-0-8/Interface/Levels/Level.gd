@@ -26,10 +26,18 @@ class_name Level
 @export var noise_lacunarity: float = 2.0
 @export var noise_gain: float = 0.5
 @export var water_threshold: float = 0.35
+@export var water_border_screens: int = 1
+@export var pond_count_min: int = 2
+@export var pond_count_max: int = 3
+@export var pond_radius_min: int = 1
+@export var pond_radius_max: int = 2
 @export var tree_noise_min: float = 0.4
 @export var tree_noise_max: float = 0.6
 @export var tree_density: float = 0.18
 @export var rock_noise_threshold: float = 0.7
+@export var rock_seed_density: float = 0.06
+@export var rock_scatter_density: float = 0.02
+@export var gold_scatter_density: float = 0.008
 @export var rock_cluster_seed_ratio: float = 0.06
 @export var rock_cluster_size_min: int = 4
 @export var rock_cluster_size_max: int = 10
@@ -60,6 +68,10 @@ class_name Level
 @export var worker_empty_run_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Run.png")
 @export var worker_idle_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Idle Wood.png")
 @export var worker_run_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Run Wood.png")
+@export var worker_gold_idle_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Black Units/Pawn/Pawn_Idle Gold.png")
+@export var worker_gold_run_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Black Units/Pawn/Pawn_Run Gold.png")
+@export var worker_meat_idle_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Black Units/Pawn/Pawn_Idle Meat.png")
+@export var worker_meat_run_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Black Units/Pawn/Pawn_Run Meat.png")
 @export var worker_axe_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Interact Axe.png")
 @export var worker_pickaxe_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Interact Pickaxe.png")
 @export var worker_knife_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Interact Knife.png")
@@ -409,6 +421,14 @@ func spawn_workers() -> void:
 			worker_instance.worker_carry_idle_texture = worker_idle_texture
 		if "worker_carry_move_texture" in worker_instance:
 			worker_instance.worker_carry_move_texture = worker_run_texture
+		if "worker_carry_gold_idle_texture" in worker_instance:
+			worker_instance.worker_carry_gold_idle_texture = worker_gold_idle_texture
+		if "worker_carry_gold_move_texture" in worker_instance:
+			worker_instance.worker_carry_gold_move_texture = worker_gold_run_texture
+		if "worker_carry_meat_idle_texture" in worker_instance:
+			worker_instance.worker_carry_meat_idle_texture = worker_meat_idle_texture
+		if "worker_carry_meat_move_texture" in worker_instance:
+			worker_instance.worker_carry_meat_move_texture = worker_meat_run_texture
 		if "worker_mode" in worker_instance:
 			worker_instance.worker_mode = true
 		if "worker_axe_texture" in worker_instance:
@@ -738,31 +758,76 @@ func _generate_noise_terrain() -> void:
 	deep_mountain_cells.clear()
 	var bounds = _get_map_bounds()
 	_clear_terrain_layers()
-	var noise = FastNoiseLite.new()
-	noise.seed = noise_seed
-	noise.frequency = noise_frequency
-	noise.fractal_octaves = noise_octaves
-	noise.fractal_lacunarity = noise_lacunarity
-	noise.fractal_gain = noise_gain
 	var land_set: Dictionary = {}
+	var screen_tiles = _get_screen_tile_size()
+	var border_x = screen_tiles.x * max(0, water_border_screens)
+	var border_y = screen_tiles.y * max(0, water_border_screens)
+	var max_border_x = int(floor(bounds.size.x * 0.1))
+	var max_border_y = int(floor(bounds.size.y * 0.1))
+	border_x = clamp(border_x, 0, min(int(floor((bounds.size.x - 1) / 2.0)), max_border_x))
+	border_y = clamp(border_y, 0, min(int(floor((bounds.size.y - 1) / 2.0)), max_border_y))
+	var land_start = bounds.position + Vector2i(border_x, border_y)
+	var land_end = bounds.position + bounds.size - Vector2i(border_x, border_y) - Vector2i(1, 1)
+	if land_start.x > land_end.x or land_start.y > land_end.y:
+		border_x = 0
+		border_y = 0
+		land_start = bounds.position
+		land_end = bounds.position + bounds.size - Vector2i(1, 1)
 	for x in range(bounds.size.x):
 		for y in range(bounds.size.y):
 			var cell = Vector2i(bounds.position.x + x, bounds.position.y + y)
-			var n = (noise.get_noise_2d(cell.x, cell.y) + 1.0) * 0.5
 			_set_water_cell(cell)
-			if n >= water_threshold:
-				land_cells.append(cell)
-				land_set[cell] = true
-				if n > rock_noise_threshold:
-					deep_mountain_cells.append(cell)
-				if n >= tree_noise_min and n <= tree_noise_max:
-					if world_rng.randf() < tree_density:
-						tree_cells.append(cell)
+	for x in range(land_start.x, land_end.x + 1):
+		for y in range(land_start.y, land_end.y + 1):
+			var cell = Vector2i(x, y)
+			land_cells.append(cell)
+			land_set[cell] = true
+	var pond_count = pond_count_min
+	if pond_count_max > pond_count_min:
+		pond_count = world_rng.randi_range(pond_count_min, pond_count_max)
+	for i in range(pond_count):
+		if land_cells.is_empty():
+			break
+		var center = land_cells[world_rng.randi_range(0, land_cells.size() - 1)]
+		var radius = pond_radius_min
+		if pond_radius_max > pond_radius_min:
+			radius = world_rng.randi_range(pond_radius_min, pond_radius_max)
+		for dx in range(-radius, radius + 1):
+			for dy in range(-radius, radius + 1):
+				if Vector2(dx, dy).length() > float(radius) + 0.25:
+					continue
+				var pond_cell = center + Vector2i(dx, dy)
+				if land_set.has(pond_cell):
+					land_set.erase(pond_cell)
+	land_cells.clear()
+	for cell in land_set.keys():
+		land_cells.append(cell)
+	for cell in land_cells:
+		if world_rng.randf() < tree_density:
+			tree_cells.append(cell)
+		if world_rng.randf() < rock_seed_density:
+			deep_mountain_cells.append(cell)
+		if world_rng.randf() < rock_scatter_density:
+			rock_cells.append(cell)
+		if world_rng.randf() < gold_scatter_density:
+			gold_cells.append(cell)
 	_apply_ground_autotile(land_set)
 	_build_rock_clusters(deep_mountain_cells)
 	tree_cells = _cap_cells(tree_cells, max_tree_count)
 	rock_cells = _cap_cells(rock_cells, max_rock_count)
 	gold_cells = _cap_cells(gold_cells, max_gold_count)
+
+func _get_screen_tile_size() -> Vector2i:
+	var view_size = get_viewport().get_visible_rect().size
+	var tile_size = Vector2i(64, 64)
+	if ground_layer and ground_layer.tile_set:
+		tile_size = ground_layer.tile_set.tile_size
+	var sx = int(ceil(view_size.x / max(1.0, float(tile_size.x))))
+	var sy = int(ceil(view_size.y / max(1.0, float(tile_size.y))))
+	if sx <= 0 or sy <= 0:
+		sx = max(1, int(round(map_width / 4.0)))
+		sy = max(1, int(round(map_height / 4.0)))
+	return Vector2i(sx, sy)
 
 func _get_map_bounds() -> Rect2i:
 	var used_cells = spawn_layer.get_used_cells()

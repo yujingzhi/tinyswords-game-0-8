@@ -33,10 +33,17 @@ class_name Sheep
 @export var worker_carry_capacity: int = 1
 @export var worker_wander_radius: float = 320.0
 @export var worker_wander_interval: float = 1.2
+@export var worker_detour_distance: float = 64.0
+@export var worker_stuck_time: float = 0.6
+@export var worker_stuck_min_move: float = 1
 @export var worker_empty_idle_texture: Texture2D
 @export var worker_empty_move_texture: Texture2D
 @export var worker_carry_idle_texture: Texture2D
 @export var worker_carry_move_texture: Texture2D
+@export var worker_carry_gold_idle_texture: Texture2D
+@export var worker_carry_gold_move_texture: Texture2D
+@export var worker_carry_meat_idle_texture: Texture2D
+@export var worker_carry_meat_move_texture: Texture2D
 @export var worker_axe_texture: Texture2D
 @export var worker_pickaxe_texture: Texture2D
 @export var worker_knife_texture: Texture2D
@@ -80,6 +87,10 @@ var worker_storage_target: Node2D
 var worker_wander_timer: float = 0.0
 var worker_wander_target: Vector2 = Vector2.ZERO
 var worker_wander_active: bool = false
+var worker_nav_last_pos: Vector2 = Vector2.ZERO
+var worker_nav_stuck_timer: float = 0.0
+var worker_nav_detour_target: Vector2 = Vector2.ZERO
+var worker_nav_detour_active: bool = false
 var hit_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Dust_01.png"), "frames": 8},
 	{"texture": preload("res://Assets/FX/Particles/Dust_02.png"), "frames": 10}
@@ -235,22 +246,35 @@ func _build_animations() -> void:
 	_add_strip(frames, "move_empty", worker_empty_move_texture, move_frame_count, move_fps)
 	_add_strip(frames, "idle_carry", worker_carry_idle_texture, idle_frame_count, idle_fps)
 	_add_strip(frames, "move_carry", worker_carry_move_texture, move_frame_count, move_fps)
+	_add_strip(frames, "idle_carry_gold", worker_carry_gold_idle_texture, idle_frame_count, idle_fps)
+	_add_strip(frames, "move_carry_gold", worker_carry_gold_move_texture, move_frame_count, move_fps)
+	_add_strip(frames, "idle_carry_meat", worker_carry_meat_idle_texture, idle_frame_count, idle_fps)
+	_add_strip(frames, "move_carry_meat", worker_carry_meat_move_texture, move_frame_count, move_fps)
 	_add_strip(frames, "work_axe", worker_axe_texture, worker_work_frame_count, worker_work_fps)
 	_add_strip(frames, "work_pickaxe", worker_pickaxe_texture, worker_work_frame_count, worker_work_fps)
 	_add_strip(frames, "work_knife", worker_knife_texture, worker_work_frame_count, worker_work_fps)
 	anim.sprite_frames = frames
 
 func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, frame_count: int, fps: float) -> void:
-	# 将横向排列的帧切成动画
 	if texture == null:
 		return
+	var final_frame_count = frame_count
+	var width = texture.get_width()
+	var height = texture.get_height()
+	if final_frame_count <= 0:
+		final_frame_count = max(1, int(round(width / max(1.0, float(height)))))
+	var guessed = max(1, int(round(width / max(1.0, float(height)))))
+	if anim_name.begins_with("work_") and guessed != final_frame_count and width % guessed == 0 and guessed <= 12:
+		final_frame_count = guessed
+	elif width % final_frame_count != 0:
+		if guessed != final_frame_count and width % guessed == 0:
+			final_frame_count = guessed
 	frames.add_animation(anim_name)
-	var frame_width = texture.get_width() / float(frame_count)
-	var frame_height = texture.get_height()
-	for i in range(frame_count):
+	var frame_width = width / float(final_frame_count)
+	for i in range(final_frame_count):
 		var atlas = AtlasTexture.new()
 		atlas.atlas = texture
-		atlas.region = Rect2(i * frame_width, 0, frame_width, frame_height)
+		atlas.region = Rect2(i * frame_width, 0, frame_width, height)
 		frames.add_frame(anim_name, atlas)
 	frames.set_animation_speed(anim_name, fps)
 	frames.set_animation_loop(anim_name, true)
@@ -540,10 +564,111 @@ func _update_carry_visual() -> void:
 		carry_label.visible = true
 		carry_label.text = str(worker_carry_count)
 
+func _is_path_blocked(from_pos: Vector2, to_pos: Vector2) -> bool:
+	var space_state = get_world_2d().direct_space_state
+	var params = PhysicsRayQueryParameters2D.create(from_pos, to_pos)
+	params.exclude = [self]
+	params.collide_with_areas = false
+	params.collide_with_bodies = true
+	var result = space_state.intersect_ray(params)
+	if result.is_empty():
+		return false
+	var collider = result.get("collider")
+	if collider == null:
+		return false
+	if collider is Node and collider.is_in_group("obstacle"):
+		return true
+	return false
+
+func _find_blocking_obstacle(from_pos: Vector2, to_pos: Vector2) -> Node2D:
+	var space_state = get_world_2d().direct_space_state
+	var params = PhysicsRayQueryParameters2D.create(from_pos, to_pos)
+	params.exclude = [self]
+	params.collide_with_areas = false
+	params.collide_with_bodies = true
+	var result = space_state.intersect_ray(params)
+	if result.is_empty():
+		return null
+	var collider = result.get("collider")
+	if collider == null:
+		return null
+	if collider is Node2D and collider.is_in_group("obstacle"):
+		return collider
+	return null
+
+func _get_obstacle_radius(obstacle: Node2D) -> float:
+	var max_radius := 0.0
+	var shapes = obstacle.find_children("*", "CollisionShape2D", true, false)
+	for shape_node in shapes:
+		if not (shape_node is CollisionShape2D):
+			continue
+		var shape = shape_node.shape
+		if shape == null:
+			continue
+		var radius := 0.0
+		if shape is CircleShape2D:
+			radius = shape.radius
+		elif shape is RectangleShape2D:
+			radius = shape.size.length() * 0.5
+		elif shape is CapsuleShape2D:
+			radius = max(shape.radius, shape.height * 0.5)
+		elif shape is ConvexPolygonShape2D:
+			for p in shape.points:
+				radius = max(radius, p.length())
+		elif shape is ConcavePolygonShape2D:
+			var data = shape.segments
+			for i in range(0, data.size(), 2):
+				radius = max(radius, data[i].length())
+				radius = max(radius, data[i + 1].length())
+		else:
+			radius = worker_detour_distance
+		var scale = shape_node.global_scale
+		var scaled_radius = radius * max(abs(scale.x), abs(scale.y))
+		max_radius = max(max_radius, scaled_radius)
+	if max_radius <= 0.0:
+		max_radius = worker_detour_distance
+	return max_radius
+
+func _get_detour_target(goal_position: Vector2) -> Vector2:
+	var obstacle = _find_blocking_obstacle(global_position, goal_position)
+	if obstacle == null:
+		return Vector2.ZERO
+	var dir = (goal_position - global_position).normalized()
+	if dir == Vector2.ZERO:
+		return Vector2.ZERO
+	var clearance = _get_obstacle_radius(obstacle) + worker_detour_distance
+	var side = Vector2(-dir.y, dir.x)
+	var left = obstacle.global_position + side * clearance
+	var right = obstacle.global_position - side * clearance
+	var left_ok = not _is_path_blocked(global_position, left) and not _is_path_blocked(left, goal_position)
+	var right_ok = not _is_path_blocked(global_position, right) and not _is_path_blocked(right, goal_position)
+	if left_ok and right_ok:
+		if left.distance_to(goal_position) <= right.distance_to(goal_position):
+			return left
+		return right
+	if left_ok:
+		return left
+	if right_ok:
+		return right
+	return Vector2.ZERO
+
 func _worker_move_to_position(position: Vector2, reach_distance: float) -> bool:
-	var to_target = position - global_position
-	if to_target.length() <= reach_distance:
+	var goal_position = position
+	if worker_nav_detour_active:
+		var detour_to = worker_nav_detour_target - global_position
+		var detour_reach = min(reach_distance, 6.0)
+		if detour_to.length() <= detour_reach:
+			worker_nav_detour_active = false
+			worker_nav_stuck_timer = 0.0
+			worker_nav_last_pos = global_position
+	var current_target = goal_position
+	if worker_nav_detour_active:
+		current_target = worker_nav_detour_target
+	var to_target = current_target - global_position
+	if not worker_nav_detour_active and to_target.length() <= reach_distance:
 		velocity = Vector2.ZERO
+		worker_nav_stuck_timer = 0.0
+		worker_nav_last_pos = global_position
 		return true
 	state = "move"
 	_play_worker_move()
@@ -551,6 +676,23 @@ func _worker_move_to_position(position: Vector2, reach_distance: float) -> bool:
 	velocity = to_target.normalized() * final_speed
 	move_and_slide()
 	anim.flip_h = velocity.x < 0
+	var moved = global_position.distance_to(worker_nav_last_pos)
+	if moved < worker_stuck_min_move:
+		worker_nav_stuck_timer += get_physics_process_delta_time()
+	else:
+		worker_nav_stuck_timer = 0.0
+	worker_nav_last_pos = global_position
+	if worker_nav_stuck_timer >= worker_stuck_time:
+		worker_nav_stuck_timer = 0.0
+		var detour_target = _get_detour_target(goal_position)
+		if detour_target == Vector2.ZERO:
+			var dir = to_target.normalized()
+			var side = Vector2(-dir.y, dir.x)
+			if randf() < 0.5:
+				side = -side
+			detour_target = global_position + side * worker_detour_distance
+		worker_nav_detour_target = detour_target
+		worker_nav_detour_active = true
 	return false
 
 func _worker_is_carrying() -> bool:
@@ -559,8 +701,11 @@ func _worker_is_carrying() -> bool:
 func _play_worker_idle() -> void:
 	if anim == null:
 		return
-	if _worker_is_carrying() and anim.sprite_frames.has_animation("idle_carry"):
-		anim.play("idle_carry")
+	if _worker_is_carrying():
+		var carry_anim = _get_worker_carry_idle_anim()
+		if anim.sprite_frames.has_animation(carry_anim):
+			anim.play(carry_anim)
+			return
 	elif anim.sprite_frames.has_animation("idle_empty"):
 		anim.play("idle_empty")
 	else:
@@ -569,12 +714,29 @@ func _play_worker_idle() -> void:
 func _play_worker_move() -> void:
 	if anim == null:
 		return
-	if _worker_is_carrying() and anim.sprite_frames.has_animation("move_carry"):
-		anim.play("move_carry")
+	if _worker_is_carrying():
+		var carry_anim = _get_worker_carry_move_anim()
+		if anim.sprite_frames.has_animation(carry_anim):
+			anim.play(carry_anim)
+			return
 	elif anim.sprite_frames.has_animation("move_empty"):
 		anim.play("move_empty")
 	else:
 		anim.play("move")
+
+func _get_worker_carry_idle_anim() -> String:
+	if worker_carry_item_type == "gold":
+		return "idle_carry_gold"
+	if worker_carry_item_type == "meat":
+		return "idle_carry_meat"
+	return "idle_carry"
+
+func _get_worker_carry_move_anim() -> String:
+	if worker_carry_item_type == "gold":
+		return "move_carry_gold"
+	if worker_carry_item_type == "meat":
+		return "move_carry_meat"
+	return "move_carry"
 
 func _update_worker_wander() -> void:
 	if worker_wander_active:
