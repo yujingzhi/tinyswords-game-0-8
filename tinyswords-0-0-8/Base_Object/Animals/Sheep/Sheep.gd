@@ -2,6 +2,8 @@ extends CharacterBody2D
 class_name Sheep
 # 绵羊的简单 AI：在原地附近闲逛、吃草、受击掉落
 
+signal died(world_position: Vector2)
+
 @export var roam_radius: float = 120.0
 @export var roam_cell_radius: int = 4
 @export var move_speed: float = 40.0
@@ -281,6 +283,7 @@ func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, fra
 
 func _die() -> void:
 	# 死亡后生成掉落物并销毁自己
+	died.emit(global_position)
 	if drop_item_scene:
 		var drop_count = randi_range(min_drop, max_drop)
 		for i in range(drop_count):
@@ -351,8 +354,8 @@ func _handle_logistics(delta: float) -> bool:
 		logistics_carrying = true
 	return true
 
-func _move_to_position(position: Vector2, reach_distance: float) -> bool:
-	var to_target = position - global_position
+func _move_to_position(target_pos: Vector2, reach_distance: float) -> bool:
+	var to_target = target_pos - global_position
 	if to_target.length() <= reach_distance:
 		velocity = Vector2.ZERO
 		return true
@@ -622,8 +625,8 @@ func _get_obstacle_radius(obstacle: Node2D) -> float:
 				radius = max(radius, data[i + 1].length())
 		else:
 			radius = worker_detour_distance
-		var scale = shape_node.global_scale
-		var scaled_radius = radius * max(abs(scale.x), abs(scale.y))
+		var shape_scale = shape_node.global_scale
+		var scaled_radius = radius * max(abs(shape_scale.x), abs(shape_scale.y))
 		max_radius = max(max_radius, scaled_radius)
 	if max_radius <= 0.0:
 		max_radius = worker_detour_distance
@@ -652,8 +655,8 @@ func _get_detour_target(goal_position: Vector2) -> Vector2:
 		return right
 	return Vector2.ZERO
 
-func _worker_move_to_position(position: Vector2, reach_distance: float) -> bool:
-	var goal_position = position
+func _worker_move_to_position(target_pos: Vector2, reach_distance: float) -> bool:
+	var goal_position = target_pos
 	if worker_nav_detour_active:
 		var detour_to = worker_nav_detour_target - global_position
 		var detour_reach = min(reach_distance, 6.0)

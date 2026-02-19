@@ -110,6 +110,7 @@ func take_damage(amount: int) -> void:
 		_spawn_hit_fx()
 	print("Archer受击 | 伤害=", amount, " | HP=", current_health, "/", max_health)
 	if current_health <= 0:
+		get_tree().call_group("level", "register_enemy_kill", "archer")
 		queue_free()
 
 func _spawn_hit_fx() -> void:

@@ -60,6 +60,7 @@ const MAX_WEAPON_COUNT: int = 4
 
 # --- 🏃‍♂️ 角色状态机 ---
 var is_attacking: bool = false 
+var attack_lock_target: Node2D = null
 var current_health: int
 var current_stamina: float
 var hit_tween: Tween
@@ -91,7 +92,6 @@ func _ready() -> void:
 	current_stamina = float(max_stamina)
 	# 通知 UI 刷新血量和体力显示
 	get_tree().call_group("interface", "update_player_health", current_health, max_health)
-	get_tree().call_group("interface", "update_player_stamina", int(round(current_stamina)), max_stamina)
 	
 	_update_weapon_state()
 	if attack_area_collision:
@@ -118,9 +118,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("scroll_up"): _cycle_weapon(1)
 	elif event.is_action_pressed("scroll_down"): _cycle_weapon(-1)
 	
-	elif event.is_action_pressed("attack") and current_weapon_index != ToolType.HAND and not (event is InputEventMouseButton):
-		# 只在有工具时触发攻击，避免空手动画
-		_start_attack()
+	elif event.is_action_pressed("attack") and not (event is InputEventMouseButton):
+		_try_attack()
 
 # ==========================================
 # 🔄 4. 武器切换逻辑
@@ -172,7 +171,6 @@ func _apply_move_direction(direction: Vector2, delta: float) -> void:
 	# 根据输入方向更新速度，并处理体力消耗/恢复
 	if direction != Vector2.ZERO:
 		velocity = direction * move_speed
-		current_stamina = clamp(current_stamina - stamina_drain_rate * delta, 0.0, float(max_stamina))
 		step_timer -= delta
 		if step_timer <= 0.0:
 			if step_audio:
@@ -181,14 +179,12 @@ func _apply_move_direction(direction: Vector2, delta: float) -> void:
 	else:
 		velocity = Vector2.ZERO
 		step_timer = 0.0
-		current_stamina = clamp(current_stamina + stamina_regen_rate * delta, 0.0, float(max_stamina))
 
 # ==========================================
 # 🏃‍♂️ 5. 物理移动与渲染引擎
 # ==========================================
 func _physics_process(_delta: float) -> void:
 	# 物理帧更新：处理移动、动画、贴图切换和体力显示
-	var stamina_before = int(round(current_stamina))
 	var prev_position = global_position
 	var input_direction: Vector2 = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if is_attacking:
@@ -201,10 +197,6 @@ func _physics_process(_delta: float) -> void:
 	var moved_distance = global_position.distance_to(prev_position)
 	if moved_distance >= 0.5:
 		last_move_dir = (global_position - prev_position).normalized()
-	# 体力有变化时才刷新 UI，避免每帧刷新
-	var stamina_now = int(round(current_stamina))
-	if stamina_now != stamina_before:
-		get_tree().call_group("interface", "update_player_stamina", stamina_now, max_stamina)
 	# 速度接近 0 时清零，减少抖动
 	if velocity.length() < 1.0:
 		velocity = Vector2.ZERO
@@ -289,10 +281,71 @@ func _start_attack() -> void:
 		ToolType.KNIFE:
 			_play_sfx(sfx_knife if sfx_knife else sfx_sharp)
 
+func _try_attack() -> void:
+	var picked = _pick_attack_target_and_weapon()
+	attack_lock_target = null
+	if not picked.is_empty():
+		attack_lock_target = picked["target"]
+		var tool: ToolType = picked["tool"]
+		if current_weapon_index != tool:
+			_equip_tool(tool)
+	if current_weapon_index == ToolType.HAND and picked.is_empty():
+		return
+	_start_attack()
+
+func _pick_attack_target_and_weapon() -> Dictionary:
+	if area_attack_node == null:
+		return {}
+	var bodies = area_attack_node.get_overlapping_bodies()
+	var best_target: Node2D = null
+	var best_tool: ToolType = ToolType.HAND
+	var best_priority := 999
+	var best_dist := INF
+	for b in bodies:
+		var body := b as Node2D
+		if body == null:
+			continue
+		if body == self or body is TileMapLayer:
+			continue
+		var tool := ToolType.HAND
+		var priority := 999
+		if body.is_in_group("enemy"):
+			tool = ToolType.KNIFE
+			priority = 0
+		else:
+			var interactable: ObjectBase = body as ObjectBase
+			if is_instance_valid(interactable):
+				var target_type: String = interactable.type.to_lower()
+				if target_type == "rock" or target_type == "gold":
+					tool = ToolType.PICKAXE
+					priority = 2
+				elif target_type == "tree":
+					tool = ToolType.AXE
+					priority = 3
+			else:
+				var sheep: Sheep = body as Sheep
+				if is_instance_valid(sheep):
+					if "worker_mode" in sheep and sheep.worker_mode:
+						continue
+					tool = ToolType.KNIFE
+					priority = 1
+		if tool == ToolType.HAND:
+			continue
+		var d = global_position.distance_to(body.global_position)
+		if priority < best_priority or (priority == best_priority and d < best_dist):
+			best_priority = priority
+			best_dist = d
+			best_tool = tool
+			best_target = body
+	if best_target == null:
+		return {}
+	return {"tool": best_tool, "target": best_target}
+
 func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 	# 攻击动画结束后关闭碰撞，恢复可移动状态
 	if "Attack" in anim_name:
 		is_attacking = false
+		attack_lock_target = null
 		if attack_area_collision:
 			attack_area_collision.disabled = true
 
@@ -301,11 +354,16 @@ func _on_animation_player_animation_finished(anim_name: StringName) -> void:
 # ==========================================
 func _on_area_attack_body_entered(body: Node2D) -> void:
 	# 有物体进入攻击范围就尝试计算伤害
+	if attack_lock_target != null and is_instance_valid(attack_lock_target) and body != attack_lock_target:
+		return
 	_apply_attack_hit(body)
 
 func _apply_attack_hits() -> void:
 	# 攻击开始时主动扫描范围内所有物体
 	if area_attack_node == null:
+		return
+	if attack_lock_target != null and is_instance_valid(attack_lock_target):
+		_apply_attack_hit(attack_lock_target)
 		return
 	var bodies = area_attack_node.get_overlapping_bodies()
 	for body in bodies:
@@ -321,15 +379,17 @@ func _apply_attack_hit(body: Node2D) -> void:
 	# 优先处理动物
 	var sheep: Sheep = body as Sheep
 	if is_instance_valid(sheep):
-		if current_weapon_index == ToolType.KNIFE:
-			sheep.take_damage(1)
-			print("攻击命中: Sheep | 伤害=1 | Weapon=", current_weapon_index, " | SheepHP=", sheep.health)
+		if current_weapon_index != ToolType.KNIFE:
+			_equip_tool(ToolType.KNIFE)
+		sheep.take_damage(1)
+		print("攻击命中: Sheep | 伤害=1 | Weapon=", current_weapon_index, " | SheepHP=", sheep.health)
 		return
 	# 再处理敌人组
 	if body.is_in_group("enemy") and body.has_method("take_damage"):
-		if current_weapon_index == ToolType.KNIFE:
-			body.take_damage(1)
-			print("攻击命中: Enemy | 伤害=1 | Weapon=", current_weapon_index, " | Enemy=", body.name)
+		if current_weapon_index != ToolType.KNIFE:
+			_equip_tool(ToolType.KNIFE)
+		body.take_damage(1)
+		print("攻击命中: Enemy | 伤害=1 | Weapon=", current_weapon_index, " | Enemy=", body.name)
 		return
 		
 	# ✨ 核心优化：多态转换。如果 body 不是 ObjectBase 的子类，这里会返回 null
@@ -357,7 +417,20 @@ func _apply_attack_hit(body: Node2D) -> void:
 			elif target_type == "rock" or target_type == "gold":
 				_play_sfx(sfx_stone)
 		else:
-			print("【导师提示】工具不匹配！你拿着工具ID: ", current_weapon_index, " 敲不动 ", target_type)
+			var required_tool: ToolType = ToolType.HAND
+			if target_type == "tree":
+				required_tool = ToolType.AXE
+			elif target_type == "rock" or target_type == "gold":
+				required_tool = ToolType.PICKAXE
+			if required_tool != ToolType.HAND:
+				_equip_tool(required_tool)
+				interactable.update_health(1)
+				if target_type == "tree":
+					_play_sfx(sfx_wood)
+				elif target_type == "rock" or target_type == "gold":
+					_play_sfx(sfx_stone)
+			else:
+				print("【导师提示】工具不匹配！你拿着工具ID: ", current_weapon_index, " 敲不动 ", target_type)
 
 func take_damage(amount: int) -> void:
 	# 受伤处理：扣血、播放闪烁和缩放特效
