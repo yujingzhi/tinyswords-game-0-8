@@ -529,7 +529,7 @@ func _update_worker(delta: float) -> void:
 				var candidate_dist = global_position.distance_to(item_candidate.global_position)
 				if candidate_dist < current_dist:
 					worker_target_item = item_candidate
-		var resource_candidate = _find_nearest_resource_with_radius(INF)
+		var resource_candidate = _find_nearest_resource()
 		if resource_candidate != null and is_instance_valid(resource_candidate):
 			if worker_target_resource == null or not is_instance_valid(worker_target_resource):
 				worker_target_resource = resource_candidate
@@ -579,6 +579,10 @@ func _find_nearest_resource_with_radius(radius: float) -> Node2D:
 			var drop_type = obj.drop_item_type
 			if drop_type != "wood" and drop_type != "redwood" and drop_type != "gold" and drop_type != "rainbow_gold":
 				continue
+		if not _is_world_pos_on_land(obj.global_position):
+			continue
+		if not _is_within_home_radius(obj.global_position):
+			continue
 		var d = global_position.distance_to(obj.global_position)
 		if d <= best_dist:
 			best_dist = d
@@ -590,6 +594,10 @@ func _find_nearest_resource_with_radius(radius: float) -> Node2D:
 		if not is_instance_valid(sheep):
 			continue
 		if "worker_mode" in sheep and sheep.worker_mode:
+			continue
+		if not _is_world_pos_on_land(sheep.global_position):
+			continue
+		if not _is_within_home_radius(sheep.global_position):
 			continue
 		var dist = global_position.distance_to(sheep.global_position)
 		if dist <= best_dist:
@@ -605,6 +613,8 @@ func _find_nearest_pickup() -> Node2D:
 		if not (item is Node2D):
 			continue
 		if not is_instance_valid(item):
+			continue
+		if not _is_within_home_radius(item.global_position):
 			continue
 		var d = global_position.distance_to(item.global_position)
 		if d <= best_dist:
@@ -863,5 +873,35 @@ func _update_worker_wander() -> void:
 		_play_worker_idle()
 		return
 	var offset = Vector2(randf_range(-worker_wander_radius, worker_wander_radius), randf_range(-worker_wander_radius, worker_wander_radius))
-	worker_wander_target = home_position + offset
+	worker_wander_target = _snap_to_land(home_position + offset, home_position, worker_wander_radius)
 	worker_wander_active = true
+
+func _get_level_node() -> Node:
+	return get_tree().get_first_node_in_group("level")
+
+func _snap_to_land(world_pos: Vector2, origin_pos: Vector2, radius: float) -> Vector2:
+	var level = _get_level_node()
+	if level == null:
+		return world_pos
+	if level.has_method("_world_to_cell") and level.has_method("_is_grass_cell") and level.has_method("_is_water_cell"):
+		var cell = level.call("_world_to_cell", world_pos)
+		if bool(level.call("_is_grass_cell", cell)) and not bool(level.call("_is_water_cell", cell)):
+			return world_pos
+	if level.has_method("_pick_land_position_near"):
+		return level.call("_pick_land_position_near", origin_pos, radius, 48)
+	return world_pos
+
+func _is_world_pos_on_land(world_pos: Vector2) -> bool:
+	var level = _get_level_node()
+	if level == null:
+		return true
+	if level.has_method("_world_to_cell") and level.has_method("_is_grass_cell") and level.has_method("_is_water_cell"):
+		var cell = level.call("_world_to_cell", world_pos)
+		return bool(level.call("_is_grass_cell", cell)) and not bool(level.call("_is_water_cell", cell))
+	return true
+
+func _is_within_home_radius(world_pos: Vector2) -> bool:
+	var radius = max(worker_wander_radius, worker_gather_radius)
+	if radius <= 0.0:
+		return true
+	return home_position.distance_to(world_pos) <= radius

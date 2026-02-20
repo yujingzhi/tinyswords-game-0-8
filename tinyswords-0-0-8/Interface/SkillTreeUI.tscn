@@ -1,0 +1,189 @@
+[gd_scene format=4 uid="uid://c76j5j3jyd8qu"]
+
+[ext_resource type="Script" path="res://Interface/skill_tree_ui.gd" id="1_kew1u"]
+[ext_resource type="FontFile" uid="uid://ckt0umhc75sre" path="res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf" id="2_y1g6w"]
+[ext_resource type="Texture2D" path="res://Assets/UI/Papers/RegularPaper.png" id="3_mvb0y"]
+[ext_resource type="Texture2D" path="res://Assets/UI/Icons/Icon_09.png" id="4_5k5ob"]
+[ext_resource type="Texture2D" path="res://Assets/UI/Icons/Icon_08.png" id="5_1neai"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = ExtResource("2_y1g6w")
+font_size = 34
+outline_size = 6
+outline_color = Color(0.0862745, 0.109804, 0.180392, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_ui"]
+font = ExtResource("2_y1g6w")
+font_size = 18
+outline_size = 5
+outline_color = Color(0.0862745, 0.109804, 0.180392, 1)
+
+[node name="SkillTreeUI" type="Control"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_kew1u")
+
+[node name="Overlay" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.7)
+mouse_filter = 2
+
+[node name="Paper" type="NinePatchRect" parent="Overlay"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -620.0
+offset_top = -360.0
+offset_right = 620.0
+offset_bottom = 360.0
+texture = ExtResource("3_mvb0y")
+patch_margin_left = 32
+patch_margin_top = 32
+patch_margin_right = 32
+patch_margin_bottom = 32
+
+[node name="Title" type="Label" parent="Overlay/Paper"]
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -320.0
+offset_top = 18.0
+offset_right = 320.0
+offset_bottom = 58.0
+text = "文明主板 (Tech Tree)"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="CloseButton" type="TextureButton" parent="Overlay/Paper"]
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 0.0
+offset_left = -62.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 62.0
+modulate = Color(1, 0.2, 0.2, 1)
+texture_normal = ExtResource("4_5k5ob")
+
+[node name="SPLabel" type="Label" parent="Overlay/Paper"]
+offset_left = 24.0
+offset_top = 22.0
+offset_right = 260.0
+offset_bottom = 46.0
+text = "可用 SP: 0"
+label_settings = SubResource("LabelSettings_ui")
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="Content" type="HBoxContainer" parent="Overlay/Paper"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 76.0
+offset_right = -24.0
+offset_bottom = -24.0
+theme_override_constants/separation = 18
+
+[node name="Left" type="VBoxContainer" parent="Overlay/Paper/Content"]
+custom_minimum_size = Vector2(360, 0)
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="Tabs" type="VBoxContainer" parent="Overlay/Paper/Content/Left"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 10
+
+[node name="TabHero" type="Button" parent="Overlay/Paper/Content/Left/Tabs"]
+text = "1. 主角专精"
+theme_override_fonts/font = ExtResource("2_y1g6w")
+theme_override_font_sizes/font_size = 20
+
+[node name="TabSheep" type="Button" parent="Overlay/Paper/Content/Left/Tabs"]
+text = "2. 羊群物流"
+theme_override_fonts/font = ExtResource("2_y1g6w")
+theme_override_font_sizes/font_size = 20
+
+[node name="TabBase" type="Button" parent="Overlay/Paper/Content/Left/Tabs"]
+text = "3. 基建能量"
+theme_override_fonts/font = ExtResource("2_y1g6w")
+theme_override_font_sizes/font_size = 20
+
+[node name="TabGene" type="Button" parent="Overlay/Paper/Content/Left/Tabs"]
+text = "4. 基因变异"
+theme_override_fonts/font = ExtResource("2_y1g6w")
+theme_override_font_sizes/font_size = 20
+
+[node name="Right" type="Control" parent="Overlay/Paper/Content"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Scroll" type="ScrollContainer" parent="Overlay/Paper/Content/Right"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+scroll_horizontal_enabled = true
+scroll_vertical_enabled = true
+
+[node name="TreeCanvas" type="Control" parent="Overlay/Paper/Content/Right/Scroll"]
+custom_minimum_size = Vector2(1400, 900)
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="SkillNode_Example" type="Control" parent="Overlay/Paper/Content/Right/Scroll/TreeCanvas"]
+position = Vector2(40, 40)
+
+[node name="Button" type="TextureButton" parent="Overlay/Paper/Content/Right/Scroll/TreeCanvas/SkillNode_Example"]
+custom_minimum_size = Vector2(72, 72)
+texture_normal = ExtResource("5_1neai")
+
+[node name="Label" type="Label" parent="Overlay/Paper/Content/Right/Scroll/TreeCanvas/SkillNode_Example"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 0.0
+anchor_bottom = 0.0
+offset_left = -36.0
+offset_top = 78.0
+offset_right = 108.0
+offset_bottom = 104.0
+text = "示例技能"
+label_settings = SubResource("LabelSettings_ui")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Tooltip" type="PanelContainer" parent="Overlay/Paper"]
+visible = false
+offset_left = 420.0
+offset_top = 140.0
+offset_right = 760.0
+offset_bottom = 260.0
+
+[node name="VBox" type="VBoxContainer" parent="Overlay/Paper/Tooltip"]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Overlay/Paper/Tooltip/VBox"]
+text = "技能名称"
+label_settings = SubResource("LabelSettings_ui")
+
+[node name="Cost" type="Label" parent="Overlay/Paper/Tooltip/VBox"]
+text = "消耗 SP: 0"
+label_settings = SubResource("LabelSettings_ui")
+
+[node name="Desc" type="Label" parent="Overlay/Paper/Tooltip/VBox"]
+text = "技能描述"
+label_settings = SubResource("LabelSettings_ui")
+autowrap_mode = 3

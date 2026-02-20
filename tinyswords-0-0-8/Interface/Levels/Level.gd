@@ -65,17 +65,17 @@ class_name Level
 @export var total_workers: int = 3
 @export var worker_spawn_radius: float = 120.0
 @export var worker_move_speed: float = 60.0
-@export var worker_empty_idle_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Idle.png")
-@export var worker_empty_run_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Run.png")
-@export var worker_idle_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Idle Wood.png")
-@export var worker_run_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Run Wood.png")
-@export var worker_gold_idle_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Black Units/Pawn/Pawn_Idle Gold.png")
-@export var worker_gold_run_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Black Units/Pawn/Pawn_Run Gold.png")
-@export var worker_meat_idle_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Black Units/Pawn/Pawn_Idle Meat.png")
-@export var worker_meat_run_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Black Units/Pawn/Pawn_Run Meat.png")
-@export var worker_axe_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Interact Axe.png")
-@export var worker_pickaxe_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Interact Pickaxe.png")
-@export var worker_knife_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Pawn/Pawn_Interact Knife.png")
+@export var worker_empty_idle_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Idle.png")
+@export var worker_empty_run_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Run.png")
+@export var worker_idle_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Idle Wood.png")
+@export var worker_run_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Run Wood.png")
+@export var worker_gold_idle_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Idle Gold.png")
+@export var worker_gold_run_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Run Gold.png")
+@export var worker_meat_idle_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Idle Meat.png")
+@export var worker_meat_run_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Run Meat.png")
+@export var worker_axe_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Interact Axe.png")
+@export var worker_pickaxe_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Interact Pickaxe.png")
+@export var worker_knife_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Interact Knife.png")
 @export var worker_idle_frame_count: int = 8
 @export var worker_run_frame_count: int = 6
 @export var worker_work_frame_count: int = 6
@@ -127,13 +127,13 @@ class_name Level
 @export var collection_pile_energy_threshold: float = 8.0
 @export var collection_pile_max: int = 3
 @export var collection_pile_spawn_radius: float = 120.0
-@export var collection_pile_texture: Texture2D = preload("res://Base_Object/Wood_Resource.png")
-@export var storage_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Buildings/Blue Buildings/Barracks.png")
+@export var collection_pile_texture: Texture2D = preload("res://Assets/Buildings/Barracks.png")
+@export var storage_texture: Texture2D = preload("res://Assets/Buildings/Barracks.png")
 @export var storage_scale: Vector2 = Vector2(0.65, 0.65)
 @export var storage_spawn_radius: float = 60.0
 @export var logistics_energy_min: float = 2.0
 @export var pile_build_interval: float = 2.0
-@export var start_with_charger: bool = true
+@export var start_with_charger: bool = false
 @export var start_charger_count: int = 1
 @export var start_charger_radius: float = 80.0
 @export var player_spawn_use_map_center: bool = true
@@ -262,13 +262,15 @@ func _ready() -> void:
 	set_process_input(true)
 	add_to_group("level")
 	if save_enabled:
+		save_slot = _normalize_save_slot(save_slot)
 		if pending_boot_save_slot != "":
 			save_slot = pending_boot_save_slot
 			pending_boot_save_slot = ""
-		save_slot = _normalize_save_slot(save_slot)
-		pending_loaded_payload = _read_save_payload(save_slot)
-		if not pending_loaded_payload.is_empty() and pending_loaded_payload.has("noise_seed"):
-			noise_seed = int(pending_loaded_payload["noise_seed"])
+			pending_loaded_payload = _read_save_payload(save_slot)
+			if not pending_loaded_payload.is_empty() and pending_loaded_payload.has("noise_seed"):
+				noise_seed = int(pending_loaded_payload["noise_seed"])
+		else:
+			pending_loaded_payload = {}
 	world_rng.seed = noise_seed
 	if objects_container:
 		for child in objects_container.get_children():
@@ -634,30 +636,76 @@ func spawn_workers() -> void:
 	if to_spawn <= 0:
 		return
 	var player = _get_player()
-	if player == null:
+	if player == null and get_tree().get_nodes_in_group("storage").is_empty():
 		if worker_spawn_attempts < worker_spawn_attempts_max:
 			worker_spawn_attempts += 1
 			call_deferred("spawn_workers")
 		return
-	var base_position = Vector2.ZERO
-	var spawn_from_warehouse = has_pending_worker_spawn_origin
-	base_position = pending_worker_spawn_origin if spawn_from_warehouse else player.global_position
+	var warehouse_origins: Array[Vector2] = []
+	for node in get_tree().get_nodes_in_group("storage"):
+		if node == null or not is_instance_valid(node):
+			continue
+		if node.name == "GlobalStorage":
+			continue
+		if node is Node2D:
+			warehouse_origins.append((node as Node2D).global_position)
+	var spawn_origins: Array[Vector2] = []
+	var spawning_from_warehouse = false
+	if has_pending_worker_spawn_origin:
+		spawn_origins.append(pending_worker_spawn_origin)
+		spawning_from_warehouse = true
+	elif not warehouse_origins.is_empty():
+		spawn_origins = warehouse_origins
+		spawning_from_warehouse = true
+	elif player != null:
+		spawn_origins.append(player.global_position)
 	var spawned = 0
 	var tries = 0
 	while spawned < to_spawn and tries < to_spawn * 6:
 		tries += 1
-		var radius = 18.0 if spawn_from_warehouse else worker_spawn_radius
+		var base_position = spawn_origins[spawned % spawn_origins.size()]
+		var radius = 18.0 if spawning_from_warehouse else worker_spawn_radius
 		var offset = Vector2(world_rng.randf_range(-radius, radius), world_rng.randf_range(-radius, radius))
 		var worker_instance = worker_scene.instantiate()
-		if worker_spawn_scatter and not spawn_from_warehouse:
-			worker_instance.global_position = _pick_worker_spawn_position()
+		if worker_spawn_scatter and not spawning_from_warehouse and spawn_origins.size() == 1 and player != null and base_position == player.global_position:
+			worker_instance.global_position = _snap_position_to_land(_pick_worker_spawn_position(), base_position, max(radius, 24.0))
 		else:
-			worker_instance.global_position = base_position + offset
+			worker_instance.global_position = _snap_position_to_land(base_position + offset, base_position, max(radius, 24.0))
 		_configure_worker_instance(worker_instance)
 		objects_container.add_child(worker_instance)
+		if "home_position" in worker_instance:
+			worker_instance.home_position = worker_instance.global_position
+		if "worker_wander_target" in worker_instance:
+			worker_instance.worker_wander_target = worker_instance.global_position
+		if "worker_wander_active" in worker_instance:
+			worker_instance.worker_wander_active = false
 		spawned += 1
-	if spawn_from_warehouse:
+	if has_pending_worker_spawn_origin:
 		has_pending_worker_spawn_origin = false
+
+func _snap_position_to_land(desired_world_pos: Vector2, origin_world_pos: Vector2, search_radius: float) -> Vector2:
+	var desired_cell = _world_to_cell(desired_world_pos)
+	if _is_grass_cell(desired_cell) and not _is_water_cell(desired_cell):
+		return _cell_to_world(desired_cell)
+	return _pick_land_position_near(origin_world_pos, search_radius, 48)
+
+func _pick_land_position_near(origin_world_pos: Vector2, radius: float, max_attempts: int) -> Vector2:
+	var origin_cell = _world_to_cell(origin_world_pos)
+	if _is_grass_cell(origin_cell) and not _is_water_cell(origin_cell):
+		var cell_origin_world = _cell_to_world(origin_cell)
+		for i in range(max_attempts):
+			var angle = world_rng.randf_range(0.0, TAU)
+			var dist = world_rng.randf_range(0.0, radius)
+			var candidate_world = cell_origin_world + Vector2(cos(angle), sin(angle)) * dist
+			var candidate_cell = _world_to_cell(candidate_world)
+			if _is_grass_cell(candidate_cell) and not _is_water_cell(candidate_cell):
+				return _cell_to_world(candidate_cell)
+	for dx in range(-8, 9):
+		for dy in range(-8, 9):
+			var candidate_cell2 = origin_cell + Vector2i(dx, dy)
+			if _is_grass_cell(candidate_cell2) and not _is_water_cell(candidate_cell2):
+				return _cell_to_world(candidate_cell2)
+	return origin_world_pos
 
 func _spawn_storage() -> void:
 	if storage_node != null and is_instance_valid(storage_node):
@@ -879,7 +927,7 @@ func _compute_hint_text(wood_count: int, gold_count: int) -> String:
 		var need_wood = max(0, collection_pile_wood_cost - wood_count)
 		var need_gold = max(0, collection_pile_gold_cost - gold_count)
 		if need_energy:
-			return "建议: 烧木/采集让能量≥" + str(int(collection_pile_energy_threshold)) + "，再凑木" + str(need_wood) + " 矿" + str(need_gold) + " 自动建桩"
+			return "建议: 采集资源让能量≥" + str(int(collection_pile_energy_threshold)) + "，再凑木" + str(need_wood) + " 矿" + str(need_gold) + " 自动建桩"
 		return "建议: 凑木" + str(need_wood) + " 矿" + str(need_gold) + " 等待自动建桩"
 	return "建议: 清理敌人，采集资源，维持血量"
 
@@ -1571,7 +1619,18 @@ func _spawn_archer_at_cell() -> bool:
 		available_cells = land_cells
 	if available_cells.is_empty():
 		return false
-	var random_cell = available_cells[world_rng.randi_range(0, available_cells.size() - 1)]
+	var random_cell := Vector2i.ZERO
+	var found_cell = false
+	var tries = min(available_cells.size(), 48)
+	for i in range(tries):
+		var candidate = available_cells[world_rng.randi_range(0, available_cells.size() - 1)]
+		if _is_water_cell(candidate) or not _is_grass_cell(candidate):
+			continue
+		random_cell = candidate
+		found_cell = true
+		break
+	if not found_cell:
+		return false
 	var archer_instance = archer_scene.instantiate()
 	archer_instance.position = _cell_to_world(random_cell)
 	objects_container.add_child(archer_instance)
@@ -2370,36 +2429,53 @@ func _spawn_collection_pile_at_position_force(pile_position: Vector2) -> void:
 		add_child(pile)
 	collection_piles.append(pile)
 
-func _restore_workers_from_save(d: Dictionary) -> void:
+func _restore_workers_from_save(_d: Dictionary) -> void:
 	var workers = get_tree().get_nodes_in_group(worker_group_name)
 	for w in workers:
 		if w == null or not is_instance_valid(w):
 			continue
 		if "worker_mode" in w and w.worker_mode:
 			w.queue_free()
-	if not d.has("workers") or typeof(d["workers"]) != TYPE_ARRAY:
-		call_deferred("spawn_workers")
-		return
-	if worker_scene == null:
-		call_deferred("spawn_workers")
-		return
-	for item in d["workers"]:
-		if typeof(item) != TYPE_DICTIONARY:
-			continue
-		var it := item as Dictionary
-		if not (it.has("x") and it.has("y")):
-			continue
-		var worker_instance = worker_scene.instantiate()
-		if worker_instance == null:
-			continue
-		if worker_instance is Node2D:
-			(worker_instance as Node2D).global_position = Vector2(float(it["x"]), float(it["y"]))
-		_configure_worker_instance(worker_instance)
-		if objects_container:
-			objects_container.add_child(worker_instance)
-		else:
-			add_child(worker_instance)
 	_apply_worker_speed_multiplier()
+	call_deferred("spawn_workers")
+
+func request_new_run() -> bool:
+	pending_boot_save_slot = ""
+	get_tree().reload_current_scene()
+	return true
+
+func _ensure_initial_warehouse_and_workers() -> void:
+	if warehouse_count > 0:
+		call_deferred("spawn_workers")
+		return
+	var player = _get_player()
+	if player == null:
+		call_deferred("_ensure_initial_warehouse_and_workers")
+		return
+	var origin_cell = _world_to_cell(player.global_position)
+	var chosen_cell = origin_cell
+	var found = false
+	for r in range(0, 17):
+		for dx in range(-r, r + 1):
+			for dy in range(-r, r + 1):
+				var c = origin_cell + Vector2i(dx, dy)
+				if not _can_place_warehouse_at_cell(c):
+					continue
+				chosen_cell = c
+				found = true
+				break
+			if found:
+				break
+		if found:
+			break
+	var warehouse_pos = _cell_to_world(chosen_cell)
+	if not found:
+		warehouse_pos = _pick_land_position_near(player.global_position, 320.0, 200)
+	_spawn_warehouse_at_position(warehouse_pos)
+	warehouse_count = 1
+	free_warehouse_tokens = 0
+	has_pending_worker_spawn_origin = true
+	pending_worker_spawn_origin = warehouse_pos
 	call_deferred("spawn_workers")
 
 func _save_game() -> bool:

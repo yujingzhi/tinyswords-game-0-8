@@ -13,7 +13,8 @@ class_name Interface # 注册大管家
 @onready var wood_label: Label = $ResourceHUD/WoodLabel
 @onready var gold_label: Label = $ResourceHUD/GoldLabel
 @onready var meat_label: Label = $ResourceHUD/MeatLabel
-@onready var save_button: TextureButton = $SaveButton
+@onready var save_button: TextureButton = $TopBar/SaveButton
+@onready var skill_tree_ui: Control = $SkillTreeUI
 
 var meta_hud_panel: PanelContainer
 var meta_hud_container: VBoxContainer
@@ -25,7 +26,11 @@ var exp_meta_label: Label
 var warehouse_meta_label: Label
 var objective_meta_label: Label
 var hint_meta_label: Label
+var meta_hud_toggle_button: Button
+var meta_hud_expanded: bool = true
+var meta_hud_anim_tween: Tween
 var exp_level_label: Label
+var exp_name_label: Label
 var exp_need_label: Label
 var build_buttons_container: HBoxContainer
 var build_warehouse_button: TextureButton
@@ -75,6 +80,11 @@ var origin_pos: Vector2
 var total_slots: int = 21 # 背包总共有多少格子
 const SLOT_SIZE = Vector2(96, 96)
 const QUICKBAR_SIZE = Vector2(72, 72)
+const META_HUD_MARGIN = 12.0
+const META_HUD_SIZE_EXPANDED = Vector2(520, 210)
+const META_HUD_SIZE_COLLAPSED = Vector2(320, 56)
+const META_HUD_SCALE_EXPANDED = Vector2(1.0, 1.0)
+const META_HUD_SCALE_COLLAPSED = Vector2(0.97, 0.97)
 # SLOT_SIZE/QUICKBAR_SIZE 控制格子的最小显示尺寸
 
 # 💡【核心数据】这是你真正的背包，所有加减全在这发生
@@ -237,21 +247,20 @@ func _update_resource_hud() -> void:
 	if meat_label:
 		meat_label.text = "肉 " + str(inventory_data.get("meat", 0))
 
-func update_meta_hud(waves_survived: int, next_wave_in: float, enemies_alive: int, next_wave_size: int, energy_points: float, energy_decay_per_sec: float, energy_consumes_wood: bool, cpu_level: int, enemy_kill_exp: int, cpu_upgrade_cost: int, logistics_multiplier: float, logistics_enabled: bool, map_seed: int, objective_text: String, hint_text: String, player_level: int, player_exp: int, exp_to_next: int, warehouse_count: int, workers_current: int, workers_cap: int, next_warehouse_wood: int, next_warehouse_gold: int, next_warehouse_meat: int, placing_warehouse: bool) -> void:
+func update_meta_hud(waves_survived: int, next_wave_in: float, enemies_alive: int, _next_wave_size: int, energy_points: float, energy_decay_per_sec: float, _energy_consumes_wood: bool, _cpu_level: int, _enemy_kill_exp: int, _cpu_upgrade_cost: int, logistics_multiplier: float, logistics_enabled: bool, _map_seed: int, objective_text: String, hint_text: String, player_level: int, player_exp: int, exp_to_next: int, warehouse_count: int, workers_current: int, workers_cap: int, next_warehouse_wood: int, next_warehouse_gold: int, next_warehouse_meat: int, placing_warehouse: bool) -> void:
 	if meta_hud_container == null:
 		return
 	if wave_meta_label:
 		wave_meta_label.text = "第" + str(waves_survived) + "波  ·  下波 " + str(int(ceil(next_wave_in))) + "s  ·  敌人 " + str(enemies_alive)
 	if energy_meta_label:
-		var burn_text = "烧木" if energy_consumes_wood else "省木"
-		energy_meta_label.text = "能量 " + str(int(round(energy_points))) + "  (-" + str(snapped(energy_decay_per_sec, 0.1)) + "/s)  ·  " + burn_text
+		energy_meta_label.text = "能量 " + str(int(round(energy_points))) + "  (-" + str(snapped(energy_decay_per_sec, 0.1)) + "/s)"
 	if cpu_meta_label:
-		cpu_meta_label.text = "后勤 " + ("在线" if logistics_enabled else "离线") + "  ·  加成 x" + str(snapped(logistics_multiplier, 0.01))
+		cpu_meta_label.text = "物流 " + ("在线" if logistics_enabled else "离线") + "  ·  加成 x" + str(snapped(logistics_multiplier, 0.01))
 	if logistics_meta_label:
 		var place_text = "  ·  摆放中" if placing_warehouse else ""
 		logistics_meta_label.text = "仓库 " + str(warehouse_count) + "  ·  工人 " + str(workers_current) + "/" + str(workers_cap) + place_text
 	if exp_meta_label:
-		exp_meta_label.text = "等级 Lv." + str(player_level) + "  ·  EXP " + str(player_exp) + "/" + str(exp_to_next)
+		exp_meta_label.text = "Lv." + str(player_level) + "  ·  经验 " + str(player_exp) + "/" + str(exp_to_next)
 	if warehouse_meta_label:
 		warehouse_meta_label.text = "建造仓库: 木" + str(next_warehouse_wood) + "  矿" + str(next_warehouse_gold) + "  肉" + str(next_warehouse_meat)
 	if objective_meta_label:
@@ -295,10 +304,8 @@ func _build_meta_hud() -> void:
 	meta_hud_panel.anchor_top = 1.0
 	meta_hud_panel.anchor_right = 1.0
 	meta_hud_panel.anchor_bottom = 1.0
-	meta_hud_panel.offset_left = -532.0
-	meta_hud_panel.offset_top = -222.0
-	meta_hud_panel.offset_right = -12.0
-	meta_hud_panel.offset_bottom = -12.0
+	_set_meta_hud_panel_size(META_HUD_SIZE_EXPANDED)
+	meta_hud_panel.scale = META_HUD_SCALE_EXPANDED
 	meta_hud_panel.modulate = Color(1, 1, 1, 0.88)
 	meta_hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	meta_hud_panel.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -330,10 +337,10 @@ func _build_meta_hud() -> void:
 	objective_meta_label = Label.new()
 	hint_meta_label = Label.new()
 	wave_meta_label.text = "第0波  ·  下波 0s  ·  敌人 0"
-	energy_meta_label.text = "能量 0  (-0/s)  ·  省木"
-	cpu_meta_label.text = "后勤 离线  ·  加成 x1"
+	energy_meta_label.text = "能量 0  (-0/s)"
+	cpu_meta_label.text = "物流 离线  ·  加成 x1"
 	logistics_meta_label.text = "仓库 0  ·  工人 0/0"
-	exp_meta_label.text = "等级 Lv.1  ·  EXP 0/0"
+	exp_meta_label.text = "Lv.1  ·  经验 0/0"
 	warehouse_meta_label.text = "建造仓库: 木0  矿0  肉0"
 	objective_meta_label.text = "任务 "
 	hint_meta_label.text = "提示 "
@@ -353,6 +360,85 @@ func _build_meta_hud() -> void:
 	meta_hud_container.add_child(warehouse_meta_label)
 	meta_hud_container.add_child(objective_meta_label)
 	meta_hud_container.add_child(hint_meta_label)
+	meta_hud_toggle_button = Button.new()
+	meta_hud_toggle_button.text = "收起"
+	meta_hud_toggle_button.focus_mode = Control.FOCUS_NONE
+	meta_hud_toggle_button.anchor_left = 1.0
+	meta_hud_toggle_button.anchor_top = 0.0
+	meta_hud_toggle_button.anchor_right = 1.0
+	meta_hud_toggle_button.anchor_bottom = 0.0
+	meta_hud_toggle_button.offset_left = -74.0
+	meta_hud_toggle_button.offset_top = 8.0
+	meta_hud_toggle_button.offset_right = -10.0
+	meta_hud_toggle_button.offset_bottom = 34.0
+	meta_hud_toggle_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	meta_hud_toggle_button.add_theme_font_override("font", hud_settings.font)
+	meta_hud_toggle_button.add_theme_font_size_override("font_size", 16)
+	meta_hud_panel.add_child(meta_hud_toggle_button)
+	meta_hud_toggle_button.pressed.connect(_toggle_meta_hud)
+	_apply_meta_hud_state(false)
+
+func _toggle_meta_hud() -> void:
+	meta_hud_expanded = not meta_hud_expanded
+	_apply_meta_hud_state(true)
+
+func _apply_meta_hud_state(animated: bool) -> void:
+	if meta_hud_panel == null:
+		return
+	var target_size = META_HUD_SIZE_EXPANDED if meta_hud_expanded else META_HUD_SIZE_COLLAPSED
+	var target_scale = META_HUD_SCALE_EXPANDED if meta_hud_expanded else META_HUD_SCALE_COLLAPSED
+	var target_modulate = Color(1, 1, 1, 0.88) if meta_hud_expanded else Color(1, 1, 1, 0.45)
+	if meta_hud_toggle_button:
+		meta_hud_toggle_button.text = "收起" if meta_hud_expanded else "展开"
+	if wave_meta_label:
+		wave_meta_label.visible = true
+	if energy_meta_label:
+		energy_meta_label.visible = meta_hud_expanded
+	if cpu_meta_label:
+		cpu_meta_label.visible = meta_hud_expanded
+	if logistics_meta_label:
+		logistics_meta_label.visible = meta_hud_expanded
+	if exp_meta_label:
+		exp_meta_label.visible = meta_hud_expanded
+	if warehouse_meta_label:
+		warehouse_meta_label.visible = meta_hud_expanded
+	if objective_meta_label:
+		objective_meta_label.visible = meta_hud_expanded
+	if hint_meta_label:
+		hint_meta_label.visible = meta_hud_expanded
+	if meta_hud_anim_tween != null and meta_hud_anim_tween.is_running():
+		meta_hud_anim_tween.kill()
+	if not animated:
+		_set_meta_hud_panel_size(target_size)
+		meta_hud_panel.scale = target_scale
+		meta_hud_panel.modulate = target_modulate
+		call_deferred("_update_meta_hud_pivot")
+		return
+	meta_hud_anim_tween = create_tween().set_parallel(true)
+	var left = -(target_size.x + META_HUD_MARGIN)
+	var top = -(target_size.y + META_HUD_MARGIN)
+	var right = -META_HUD_MARGIN
+	var bottom = -META_HUD_MARGIN
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "offset_left", left, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "offset_top", top, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "offset_right", right, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "offset_bottom", bottom, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "scale", target_scale, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "modulate", target_modulate, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.chain().tween_callback(func(): _update_meta_hud_pivot())
+
+func _set_meta_hud_panel_size(size: Vector2) -> void:
+	if meta_hud_panel == null:
+		return
+	meta_hud_panel.offset_left = -(size.x + META_HUD_MARGIN)
+	meta_hud_panel.offset_top = -(size.y + META_HUD_MARGIN)
+	meta_hud_panel.offset_right = -META_HUD_MARGIN
+	meta_hud_panel.offset_bottom = -META_HUD_MARGIN
+
+func _update_meta_hud_pivot() -> void:
+	if meta_hud_panel == null:
+		return
+	meta_hud_panel.pivot_offset = meta_hud_panel.size
 
 func _strip_hud_prefix(text: String, prefix: String) -> String:
 	if text.begins_with(prefix):
@@ -442,6 +528,10 @@ func _ensure_save_popup() -> void:
 	save_rename_button.text = "重命名"
 	save_rename_button.pressed.connect(_on_save_rename_pressed)
 	row2.add_child(save_rename_button)
+	var new_run_button = Button.new()
+	new_run_button.text = "新开局"
+	new_run_button.pressed.connect(_on_new_run_pressed)
+	row2.add_child(new_run_button)
 
 	save_status_label = Label.new()
 	save_status_label.text = ""
@@ -485,17 +575,15 @@ func _refresh_save_ui() -> void:
 	var slots: Array = []
 	if level.has_method("list_save_slots"):
 		slots = level.call("list_save_slots")
-	var current = "默认存档"
-	if level.has_method("get_save_slot"):
-		current = str(level.call("get_save_slot"))
+	var preferred = "默认存档"
 	save_slot_select.clear()
 	for s in slots:
 		save_slot_select.add_item(str(s))
 	if save_slot_select.item_count == 0:
-		save_slot_select.add_item(current)
+		save_slot_select.add_item(preferred)
 	var target_index = 0
 	for i in range(save_slot_select.item_count):
-		if save_slot_select.get_item_text(i) == current:
+		if save_slot_select.get_item_text(i) == preferred:
 			target_index = i
 			break
 	save_slot_select.select(target_index)
@@ -604,6 +692,14 @@ func _on_save_rename_pressed() -> void:
 		_refresh_save_ui()
 	else:
 		_set_save_status("重命名失败")
+
+func _on_new_run_pressed() -> void:
+	_hide_save_popup()
+	var level = _get_level_node()
+	if level != null and level.has_method("request_new_run"):
+		level.call("request_new_run")
+	else:
+		_restart_run()
 
 func _build_end_overlay() -> void:
 	end_overlay = ColorRect.new()
@@ -716,7 +812,7 @@ func update_player_experience(current: int, to_next: int, level: int) -> void:
 	if exp_level_label:
 		exp_level_label.text = "Lv." + str(level)
 	if exp_need_label:
-		exp_need_label.text = "还需 " + str(max(0, to_next - current))
+		exp_need_label.text = str(clamp(current, 0, max(0, to_next))) + "/" + str(max(0, to_next))
 
 func _sync_player_health() -> void:
 	var player = get_tree().get_first_node_in_group("peao")
@@ -730,29 +826,53 @@ func _sync_player_health() -> void:
 func _build_exp_progress() -> void:
 	if player_exp_bar_root == null:
 		return
+	var scale_factor = max(0.05, float(player_exp_bar_root.scale.x))
+	var exp_settings = LabelSettings.new()
+	exp_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	exp_settings.font_size = int(round(18.0 / scale_factor))
+	exp_settings.outline_size = int(round(5.0 / scale_factor))
+	exp_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
 	exp_level_label = Label.new()
 	exp_level_label.anchor_left = 0.0
-	exp_level_label.anchor_top = 0.5
+	exp_level_label.anchor_top = 0.0
 	exp_level_label.anchor_right = 0.0
-	exp_level_label.anchor_bottom = 0.5
-	exp_level_label.offset_left = -64.0
-	exp_level_label.offset_top = -10.0
-	exp_level_label.offset_right = -8.0
-	exp_level_label.offset_bottom = 10.0
-	exp_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	exp_level_label.anchor_bottom = 1.0
+	exp_level_label.offset_left = 18.0
+	exp_level_label.offset_top = 0.0
+	exp_level_label.offset_right = 86.0
+	exp_level_label.offset_bottom = 0.0
+	exp_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	exp_level_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	exp_level_label.text = "Lv.1"
+	exp_level_label.label_settings = exp_settings
 	player_exp_bar_root.add_child(exp_level_label)
+	exp_name_label = Label.new()
+	exp_name_label.anchor_left = 0.0
+	exp_name_label.anchor_top = 0.0
+	exp_name_label.anchor_right = 0.0
+	exp_name_label.anchor_bottom = 1.0
+	exp_name_label.offset_left = 98.0
+	exp_name_label.offset_top = 0.0
+	exp_name_label.offset_right = 162.0
+	exp_name_label.offset_bottom = 0.0
+	exp_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	exp_name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	exp_name_label.text = "经验"
+	exp_name_label.label_settings = exp_settings
+	player_exp_bar_root.add_child(exp_name_label)
 	exp_need_label = Label.new()
 	exp_need_label.anchor_left = 1.0
-	exp_need_label.anchor_top = 0.5
+	exp_need_label.anchor_top = 0.0
 	exp_need_label.anchor_right = 1.0
-	exp_need_label.anchor_bottom = 0.5
-	exp_need_label.offset_left = 8.0
-	exp_need_label.offset_top = -10.0
-	exp_need_label.offset_right = 140.0
-	exp_need_label.offset_bottom = 10.0
-	exp_need_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	exp_need_label.text = "还需 0"
+	exp_need_label.anchor_bottom = 1.0
+	exp_need_label.offset_left = -172.0
+	exp_need_label.offset_top = 0.0
+	exp_need_label.offset_right = -18.0
+	exp_need_label.offset_bottom = 0.0
+	exp_need_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	exp_need_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	exp_need_label.text = "0/0"
+	exp_need_label.label_settings = exp_settings
 	player_exp_bar_root.add_child(exp_need_label)
 
 func _build_build_buttons() -> void:
@@ -775,7 +895,7 @@ func _build_build_buttons() -> void:
 	build_warehouse_button.stretch_mode = TextureButton.STRETCH_SCALE
 	build_warehouse_button.tooltip_text = "需要: 木0 矿0 肉0"
 	build_warehouse_button.pressed.connect(_on_build_warehouse_pressed)
-	build_warehouse_button.texture_normal = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Buildings/Blue Buildings/Barracks.png")
+	build_warehouse_button.texture_normal = preload("res://Assets/Buildings/Barracks.png")
 	build_warehouse_button.set_script(preload("res://Interface/ScaleButton.gd"))
 	build_buttons_container.add_child(build_warehouse_button)
 	var click_audio = AudioStreamPlayer.new()
@@ -1011,6 +1131,10 @@ func _on_bag_button_pressed() -> void:
 
 func _on_save_button_pressed() -> void:
 	_toggle_save_popup()
+
+func _on_skill_button_pressed() -> void:
+	if skill_tree_ui != null and is_instance_valid(skill_tree_ui) and skill_tree_ui.has_method("toggle"):
+		skill_tree_ui.call("toggle")
 
 func _open_inventory_animation():
 	# 打开背包的弹出动画
