@@ -10,6 +10,12 @@ font_size = 28
 outline_size = 4
 outline_color = Color(0, 0, 0, 1)
 
+[sub_resource type="LabelSettings" id="LabelSettings_5j73m"]
+font = ExtResource("3_ln8hb")
+font_size = 18
+outline_size = 4
+outline_color = Color(0, 0, 0, 1)
+
 [node name="InventorySlot" type="TextureRect" unique_id=1760444441]
 custom_minimum_size = Vector2(96, 96)
 offset_right = 40.0
@@ -38,3 +44,20 @@ grow_horizontal = 0
 grow_vertical = 0
 label_settings = SubResource("LabelSettings_146tp")
 horizontal_alignment = 2
+
+[node name="Name" type="Label" parent="." unique_id=3751906]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -44.0
+offset_top = -14.0
+offset_right = 44.0
+offset_bottom = 14.0
+grow_horizontal = 2
+grow_vertical = 2
+label_settings = SubResource("LabelSettings_5j73m")
+horizontal_alignment = 1
+vertical_alignment = 1

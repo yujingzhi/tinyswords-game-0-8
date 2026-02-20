@@ -13,7 +13,9 @@ class_name Interface # 注册大管家
 @onready var wood_label: Label = $ResourceHUD/WoodLabel
 @onready var gold_label: Label = $ResourceHUD/GoldLabel
 @onready var meat_label: Label = $ResourceHUD/MeatLabel
+@onready var save_button: TextureButton = $SaveButton
 
+var meta_hud_panel: PanelContainer
 var meta_hud_container: VBoxContainer
 var wave_meta_label: Label
 var energy_meta_label: Label
@@ -34,6 +36,18 @@ var end_title_label: Label
 var end_stats_label: Label
 var restart_button: Button
 var quit_button: Button
+var save_slot_select: OptionButton
+var save_slot_edit: LineEdit
+var save_status_label: Label
+var save_overwrite_button: Button
+var save_as_button: Button
+var save_load_button: Button
+var save_rename_button: Button
+var save_popup_overlay: ColorRect
+var save_popup_panel: PanelContainer
+var save_popup_tween: Tween
+var save_overwrite_tween: Tween
+var save_load_tween: Tween
 # 这些节点分别对应 UI 中的背包、格子和血条等元素
 
 # --- 🔥 配置区域 ---
@@ -65,7 +79,7 @@ const QUICKBAR_SIZE = Vector2(72, 72)
 
 # 💡【核心数据】这是你真正的背包，所有加减全在这发生
 var inventory_data: Dictionary = {} 
-var quickbar_items: Array[String] = ["", "", "", ""]
+var quickbar_items: Array[String] = ["", "", "", "", ""]
 # inventory_data 保存“物品类型 -> 数量”
 
 # --- 🚀 初始化 ---
@@ -95,6 +109,8 @@ func _ready() -> void:
 	_build_exp_progress()
 	_build_build_buttons()
 	_build_end_overlay()
+	if save_button and not save_button.pressed.is_connected(_on_save_button_pressed):
+		save_button.pressed.connect(_on_save_button_pressed)
 	call_deferred("_sync_player_health")
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -107,11 +123,39 @@ func _unhandled_input(event: InputEvent) -> void:
 				elif key_event.keycode == KEY_Q or key_event.keycode == KEY_ESCAPE:
 					_quit_run()
 		return
+	if event is InputEventKey:
+		var key_event_save := event as InputEventKey
+		if key_event_save.pressed and not key_event_save.echo and key_event_save.keycode == KEY_F11:
+			var mode = DisplayServer.window_get_mode()
+			var next_mode = DisplayServer.WINDOW_MODE_WINDOWED if mode == DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_FULLSCREEN
+			DisplayServer.window_set_mode(next_mode)
+			get_viewport().set_input_as_handled()
+			return
+		if key_event_save.pressed and not key_event_save.echo and key_event_save.keycode == KEY_F5:
+			_toggle_save_popup()
+			get_viewport().set_input_as_handled()
+			return
+		if key_event_save.pressed and not key_event_save.echo and key_event_save.ctrl_pressed and key_event_save.keycode == KEY_S:
+			_on_save_overwrite_pressed()
+			get_viewport().set_input_as_handled()
+			return
+		if key_event_save.pressed and not key_event_save.echo and key_event_save.ctrl_pressed and key_event_save.keycode == KEY_L:
+			_on_save_load_pressed()
+			get_viewport().set_input_as_handled()
+			return
 	# 处理背包开关与快捷栏按键
 	if event.is_action_pressed("ui_cancel"):
+		if _is_save_popup_visible():
+			_hide_save_popup()
+			get_viewport().set_input_as_handled()
+			return
 		if inventory_panel and inventory_panel.visible and inventory_panel.modulate.a > 0.1:
 			_close_inventory_animation()
 		return
+	if _is_save_popup_visible():
+		if event.is_action_pressed("toggle_inventory") or event.is_action_pressed("quickbar_1") or event.is_action_pressed("quickbar_2") or event.is_action_pressed("quickbar_3") or event.is_action_pressed("quickbar_4") or event.is_action_pressed("quickbar_5"):
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("toggle_inventory"):
 		_on_bag_button_pressed()
 	elif event.is_action_pressed("quickbar_1"):
@@ -122,6 +166,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		use_quick_slot(2)
 	elif event.is_action_pressed("quickbar_4"):
 		use_quick_slot(3)
+	elif event.is_action_pressed("quickbar_5"):
+		use_quick_slot(4)
 
 func _on_avatar_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -131,6 +177,15 @@ func _on_avatar_gui_input(event: InputEvent) -> void:
 # 这个方法会被外界（如 PhysicItem）呼叫
 func add_item(item_type: String, amount: int) -> void:
 	# 增加某种物品数量
+	if item_type == "redwood":
+		item_type = "wood"
+		amount *= 5
+	elif item_type == "red_meat":
+		item_type = "meat"
+		amount *= 5
+	elif item_type == "rainbow_gold":
+		item_type = "gold"
+		amount *= 5
 	# 1. 如果是第一次捡到这玩意，给字典开个户
 	if not inventory_data.has(item_type):
 		inventory_data[item_type] = 0
@@ -186,23 +241,29 @@ func update_meta_hud(waves_survived: int, next_wave_in: float, enemies_alive: in
 	if meta_hud_container == null:
 		return
 	if wave_meta_label:
-		wave_meta_label.text = "波次 " + str(waves_survived) + " | 下波 " + str(int(ceil(next_wave_in))) + "s | 规模 " + str(next_wave_size) + " | 敌人 " + str(enemies_alive)
+		wave_meta_label.text = "第" + str(waves_survived) + "波  ·  下波 " + str(int(ceil(next_wave_in))) + "s  ·  敌人 " + str(enemies_alive)
 	if energy_meta_label:
-		var burn_text = "烧木" if energy_consumes_wood else "不烧木"
-		energy_meta_label.text = "能量 " + str(int(round(energy_points))) + " | 衰减 " + str(snapped(energy_decay_per_sec, 0.1)) + "/s | " + burn_text
+		var burn_text = "烧木" if energy_consumes_wood else "省木"
+		energy_meta_label.text = "能量 " + str(int(round(energy_points))) + "  (-" + str(snapped(energy_decay_per_sec, 0.1)) + "/s)  ·  " + burn_text
 	if cpu_meta_label:
-		cpu_meta_label.text = "CPU Lv." + str(cpu_level) + " | 杀敌经验 " + str(enemy_kill_exp) + " | 每级 " + str(max(1, cpu_upgrade_cost)) + " | 物流倍率 x" + str(snapped(logistics_multiplier, 0.01))
+		cpu_meta_label.text = "后勤 " + ("在线" if logistics_enabled else "离线") + "  ·  加成 x" + str(snapped(logistics_multiplier, 0.01))
 	if logistics_meta_label:
-		logistics_meta_label.text = "物流 " + ("启用" if logistics_enabled else "停用") + " | 种子 " + str(map_seed)
+		var place_text = "  ·  摆放中" if placing_warehouse else ""
+		logistics_meta_label.text = "仓库 " + str(warehouse_count) + "  ·  工人 " + str(workers_current) + "/" + str(workers_cap) + place_text
 	if exp_meta_label:
-		exp_meta_label.text = "经验 Lv." + str(player_level) + " | " + str(player_exp) + "/" + str(exp_to_next)
+		exp_meta_label.text = "等级 Lv." + str(player_level) + "  ·  EXP " + str(player_exp) + "/" + str(exp_to_next)
 	if warehouse_meta_label:
-		var place_text = " | 放置中" if placing_warehouse else ""
-		warehouse_meta_label.text = "仓库 " + str(warehouse_count) + " | 工人 " + str(workers_current) + "/" + str(workers_cap) + " | 下次仓库: 木" + str(next_warehouse_wood) + " 矿" + str(next_warehouse_gold) + " 肉" + str(next_warehouse_meat) + place_text
+		warehouse_meta_label.text = "建造仓库: 木" + str(next_warehouse_wood) + "  矿" + str(next_warehouse_gold) + "  肉" + str(next_warehouse_meat)
 	if objective_meta_label:
-		objective_meta_label.text = objective_text
+		var t = _strip_hud_prefix(objective_text, "目标:")
+		t = _strip_hud_prefix(t, "目标：")
+		objective_meta_label.text = "任务 " + t.strip_edges()
 	if hint_meta_label:
-		hint_meta_label.text = hint_text
+		var h = _strip_hud_prefix(hint_text, "建议:")
+		h = _strip_hud_prefix(h, "建议：")
+		h = _strip_hud_prefix(h, "提示:")
+		h = _strip_hud_prefix(h, "提示：")
+		hint_meta_label.text = "提示 " + h.strip_edges()
 
 func show_end_screen(won: bool, stats: Dictionary) -> void:
 	if end_overlay == null:
@@ -228,18 +289,38 @@ func show_end_screen(won: bool, stats: Dictionary) -> void:
 	end_overlay.visible = true
 
 func _build_meta_hud() -> void:
+	meta_hud_panel = PanelContainer.new()
+	meta_hud_panel.name = "MetaHUDPanel"
+	meta_hud_panel.anchor_left = 1.0
+	meta_hud_panel.anchor_top = 1.0
+	meta_hud_panel.anchor_right = 1.0
+	meta_hud_panel.anchor_bottom = 1.0
+	meta_hud_panel.offset_left = -532.0
+	meta_hud_panel.offset_top = -222.0
+	meta_hud_panel.offset_right = -12.0
+	meta_hud_panel.offset_bottom = -12.0
+	meta_hud_panel.modulate = Color(1, 1, 1, 0.88)
+	meta_hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	meta_hud_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(meta_hud_panel)
 	meta_hud_container = VBoxContainer.new()
 	meta_hud_container.name = "MetaHUD"
-	meta_hud_container.anchor_left = 1.0
+	meta_hud_container.anchor_left = 0.0
 	meta_hud_container.anchor_top = 0.0
 	meta_hud_container.anchor_right = 1.0
-	meta_hud_container.anchor_bottom = 0.0
-	meta_hud_container.offset_left = -520.0
-	meta_hud_container.offset_top = 12.0
-	meta_hud_container.offset_right = -12.0
-	meta_hud_container.offset_bottom = 220.0
+	meta_hud_container.anchor_bottom = 1.0
+	meta_hud_container.offset_left = 10.0
+	meta_hud_container.offset_top = 10.0
+	meta_hud_container.offset_right = -10.0
+	meta_hud_container.offset_bottom = -10.0
+	meta_hud_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	meta_hud_container.process_mode = Node.PROCESS_MODE_ALWAYS
-	add_child(meta_hud_container)
+	meta_hud_panel.add_child(meta_hud_container)
+	var hud_settings = LabelSettings.new()
+	hud_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	hud_settings.font_size = 18
+	hud_settings.outline_size = 5
+	hud_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
 	wave_meta_label = Label.new()
 	energy_meta_label = Label.new()
 	cpu_meta_label = Label.new()
@@ -248,14 +329,22 @@ func _build_meta_hud() -> void:
 	warehouse_meta_label = Label.new()
 	objective_meta_label = Label.new()
 	hint_meta_label = Label.new()
-	wave_meta_label.text = "波次 0 | 下波 0s | 规模 0 | 敌人 0"
-	energy_meta_label.text = "能量 0 | 衰减 0/s | 不烧木"
-	cpu_meta_label.text = "CPU Lv.1 | 物流倍率 x1"
-	logistics_meta_label.text = "物流 停用 | 种子 0"
-	exp_meta_label.text = "经验 Lv.1 | 0/0"
-	warehouse_meta_label.text = "仓库 1 | 工人 0/0 | 下次仓库: 木0 矿0 肉0"
-	objective_meta_label.text = "目标: "
-	hint_meta_label.text = "建议: "
+	wave_meta_label.text = "第0波  ·  下波 0s  ·  敌人 0"
+	energy_meta_label.text = "能量 0  (-0/s)  ·  省木"
+	cpu_meta_label.text = "后勤 离线  ·  加成 x1"
+	logistics_meta_label.text = "仓库 0  ·  工人 0/0"
+	exp_meta_label.text = "等级 Lv.1  ·  EXP 0/0"
+	warehouse_meta_label.text = "建造仓库: 木0  矿0  肉0"
+	objective_meta_label.text = "任务 "
+	hint_meta_label.text = "提示 "
+	wave_meta_label.label_settings = hud_settings
+	energy_meta_label.label_settings = hud_settings
+	cpu_meta_label.label_settings = hud_settings
+	logistics_meta_label.label_settings = hud_settings
+	exp_meta_label.label_settings = hud_settings
+	warehouse_meta_label.label_settings = hud_settings
+	objective_meta_label.label_settings = hud_settings
+	hint_meta_label.label_settings = hud_settings
 	meta_hud_container.add_child(wave_meta_label)
 	meta_hud_container.add_child(energy_meta_label)
 	meta_hud_container.add_child(cpu_meta_label)
@@ -264,6 +353,257 @@ func _build_meta_hud() -> void:
 	meta_hud_container.add_child(warehouse_meta_label)
 	meta_hud_container.add_child(objective_meta_label)
 	meta_hud_container.add_child(hint_meta_label)
+
+func _strip_hud_prefix(text: String, prefix: String) -> String:
+	if text.begins_with(prefix):
+		return text.substr(prefix.length()).strip_edges()
+	return text
+
+func _is_save_popup_visible() -> bool:
+	return save_popup_overlay != null and is_instance_valid(save_popup_overlay) and save_popup_overlay.visible
+
+func _toggle_save_popup() -> void:
+	if _is_save_popup_visible():
+		_hide_save_popup()
+	else:
+		_show_save_popup()
+
+func _ensure_save_popup() -> void:
+	if save_popup_overlay != null and is_instance_valid(save_popup_overlay):
+		return
+	save_popup_overlay = ColorRect.new()
+	save_popup_overlay.name = "SavePopupOverlay"
+	save_popup_overlay.color = Color(0, 0, 0, 0.45)
+	save_popup_overlay.anchor_left = 0.0
+	save_popup_overlay.anchor_top = 0.0
+	save_popup_overlay.anchor_right = 1.0
+	save_popup_overlay.anchor_bottom = 1.0
+	save_popup_overlay.offset_left = 0.0
+	save_popup_overlay.offset_top = 0.0
+	save_popup_overlay.offset_right = 0.0
+	save_popup_overlay.offset_bottom = 0.0
+	save_popup_overlay.visible = false
+	save_popup_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	save_popup_overlay.gui_input.connect(func(e: InputEvent):
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			_hide_save_popup()
+	)
+	add_child(save_popup_overlay)
+
+	save_popup_panel = PanelContainer.new()
+	save_popup_panel.name = "SavePopup"
+	save_popup_panel.anchor_left = 0.0
+	save_popup_panel.anchor_top = 0.0
+	save_popup_panel.anchor_right = 0.0
+	save_popup_panel.anchor_bottom = 0.0
+	save_popup_panel.offset_left = 12.0
+	save_popup_panel.offset_top = 72.0
+	save_popup_panel.offset_right = 430.0
+	save_popup_panel.offset_bottom = 210.0
+	save_popup_panel.visible = false
+	save_popup_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	save_popup_overlay.add_child(save_popup_panel)
+
+	var save_vbox = VBoxContainer.new()
+	save_popup_panel.add_child(save_vbox)
+	var row1 = HBoxContainer.new()
+	save_vbox.add_child(row1)
+	var save_label = Label.new()
+	save_label.text = "存档"
+	row1.add_child(save_label)
+	save_slot_select = OptionButton.new()
+	save_slot_select.custom_minimum_size = Vector2(260, 0)
+	save_slot_select.item_selected.connect(_on_save_slot_selected)
+	row1.add_child(save_slot_select)
+	var close_btn = Button.new()
+	close_btn.text = "关闭"
+	close_btn.pressed.connect(_hide_save_popup)
+	row1.add_child(close_btn)
+
+	save_slot_edit = LineEdit.new()
+	save_slot_edit.placeholder_text = "输入名称用于另存/重命名"
+	save_vbox.add_child(save_slot_edit)
+
+	var row2 = HBoxContainer.new()
+	save_vbox.add_child(row2)
+	save_overwrite_button = Button.new()
+	save_overwrite_button.text = "存档"
+	save_overwrite_button.pressed.connect(_on_save_overwrite_pressed)
+	row2.add_child(save_overwrite_button)
+	save_as_button = Button.new()
+	save_as_button.text = "另存"
+	save_as_button.pressed.connect(_on_save_as_pressed)
+	row2.add_child(save_as_button)
+	save_load_button = Button.new()
+	save_load_button.text = "读档"
+	save_load_button.pressed.connect(_on_save_load_pressed)
+	row2.add_child(save_load_button)
+	save_rename_button = Button.new()
+	save_rename_button.text = "重命名"
+	save_rename_button.pressed.connect(_on_save_rename_pressed)
+	row2.add_child(save_rename_button)
+
+	save_status_label = Label.new()
+	save_status_label.text = ""
+	save_vbox.add_child(save_status_label)
+
+func _show_save_popup() -> void:
+	_ensure_save_popup()
+	_refresh_save_ui()
+	if save_popup_tween != null and save_popup_tween.is_running():
+		save_popup_tween.kill()
+	save_popup_overlay.visible = true
+	save_popup_overlay.modulate.a = 0.0
+	save_popup_panel.visible = true
+	save_popup_panel.modulate.a = 0.0
+	save_popup_tween = create_tween().set_parallel(true)
+	save_popup_tween.tween_property(save_popup_overlay, "modulate:a", 1.0, 0.12)
+	save_popup_tween.tween_property(save_popup_panel, "modulate:a", 1.0, 0.12)
+
+func _hide_save_popup() -> void:
+	if not _is_save_popup_visible():
+		return
+	if save_popup_tween != null and save_popup_tween.is_running():
+		save_popup_tween.kill()
+	save_popup_tween = create_tween().set_parallel(true)
+	save_popup_tween.tween_property(save_popup_overlay, "modulate:a", 0.0, 0.1)
+	save_popup_tween.tween_property(save_popup_panel, "modulate:a", 0.0, 0.1)
+	save_popup_tween.chain().tween_callback(func():
+		if save_popup_overlay and is_instance_valid(save_popup_overlay):
+			save_popup_overlay.visible = false
+		if save_popup_panel and is_instance_valid(save_popup_panel):
+			save_popup_panel.visible = false
+	)
+
+func _get_level_node() -> Node:
+	return get_tree().get_first_node_in_group("level")
+
+func _refresh_save_ui() -> void:
+	var level = _get_level_node()
+	if level == null or save_slot_select == null:
+		return
+	var slots: Array = []
+	if level.has_method("list_save_slots"):
+		slots = level.call("list_save_slots")
+	var current = "默认存档"
+	if level.has_method("get_save_slot"):
+		current = str(level.call("get_save_slot"))
+	save_slot_select.clear()
+	for s in slots:
+		save_slot_select.add_item(str(s))
+	if save_slot_select.item_count == 0:
+		save_slot_select.add_item(current)
+	var target_index = 0
+	for i in range(save_slot_select.item_count):
+		if save_slot_select.get_item_text(i) == current:
+			target_index = i
+			break
+	save_slot_select.select(target_index)
+	_on_save_slot_selected(target_index)
+
+func _on_save_slot_selected(index: int) -> void:
+	if save_slot_select == null or save_slot_edit == null:
+		return
+	save_slot_edit.text = save_slot_select.get_item_text(index)
+
+func _get_current_save_slot() -> String:
+	var level = _get_level_node()
+	if level != null and level.has_method("get_save_slot"):
+		return str(level.call("get_save_slot"))
+	return "默认存档"
+
+func _get_selected_save_slot() -> String:
+	if save_slot_select == null or save_slot_select.item_count == 0:
+		return _get_current_save_slot()
+	return save_slot_select.get_item_text(save_slot_select.selected)
+
+func _set_save_status(text: String) -> void:
+	if save_status_label:
+		save_status_label.text = text
+
+func _on_save_overwrite_pressed() -> void:
+	var level = _get_level_node()
+	if level == null:
+		return
+	var slot = _get_selected_save_slot()
+	var ok = true
+	if level.has_method("request_manual_save"):
+		ok = bool(level.call("request_manual_save", slot))
+	if ok:
+		_set_save_status("已存档: " + slot)
+		_refresh_save_ui()
+	else:
+		_set_save_status("存档失败: " + slot)
+	if save_overwrite_button == null:
+		return
+	if save_overwrite_tween != null and save_overwrite_tween.is_running():
+		save_overwrite_tween.kill()
+	save_overwrite_button.disabled = true
+	var original = save_overwrite_button.text
+	save_overwrite_button.text = "已存"
+	save_overwrite_tween = create_tween()
+	save_overwrite_tween.tween_interval(0.7)
+	save_overwrite_tween.tween_callback(func():
+		if save_overwrite_button:
+			save_overwrite_button.text = original
+			save_overwrite_button.disabled = false
+	)
+
+func _on_save_as_pressed() -> void:
+	var level = _get_level_node()
+	if level == null or save_slot_edit == null:
+		return
+	var slot = save_slot_edit.text
+	var ok = true
+	if level.has_method("request_manual_save"):
+		ok = bool(level.call("request_manual_save", slot))
+	if ok:
+		_set_save_status("已另存为: " + slot.strip_edges())
+		_refresh_save_ui()
+	else:
+		_set_save_status("另存失败: " + slot.strip_edges())
+
+func _on_save_load_pressed() -> void:
+	var level = _get_level_node()
+	if level == null:
+		return
+	var slot = _get_selected_save_slot()
+	var ok = false
+	if level.has_method("request_manual_load"):
+		ok = bool(level.call("request_manual_load", slot))
+	if ok:
+		_set_save_status("正在读档(重开本局): " + slot)
+	else:
+		_set_save_status("读档失败(不存在): " + slot)
+	if save_load_button == null:
+		return
+	if save_load_tween != null and save_load_tween.is_running():
+		save_load_tween.kill()
+	save_load_button.disabled = true
+	var original = save_load_button.text
+	save_load_button.text = "已读"
+	save_load_tween = create_tween()
+	save_load_tween.tween_interval(0.7)
+	save_load_tween.tween_callback(func():
+		if save_load_button:
+			save_load_button.text = original
+			save_load_button.disabled = false
+	)
+
+func _on_save_rename_pressed() -> void:
+	var level = _get_level_node()
+	if level == null or save_slot_edit == null:
+		return
+	var from_slot = _get_selected_save_slot()
+	var to_slot = save_slot_edit.text
+	var ok = false
+	if level.has_method("rename_save_slot"):
+		ok = bool(level.call("rename_save_slot", from_slot, to_slot))
+	if ok:
+		_set_save_status("已重命名: " + from_slot + " -> " + to_slot.strip_edges())
+		_refresh_save_ui()
+	else:
+		_set_save_status("重命名失败")
 
 func _build_end_overlay() -> void:
 	end_overlay = ColorRect.new()
@@ -540,6 +880,12 @@ func use_quick_slot(index: int) -> void:
 	if index < 0 or index >= quickbar_items.size():
 		return
 	var item_type = quickbar_items[index]
+	if item_type == "redwood_seed":
+		get_tree().call_group("level", "request_plant_redwood_seed")
+		return
+	if item_type == "lamb":
+		get_tree().call_group("level", "request_release_lamb")
+		return
 	if item_type == "meat":
 		var ok = _consume_meat("quick_slot")
 		if ok:
@@ -662,6 +1008,9 @@ func _on_bag_button_pressed() -> void:
 	else:
 		_consume_meat("open_inventory")
 		_open_inventory_animation()
+
+func _on_save_button_pressed() -> void:
+	_toggle_save_popup()
 
 func _open_inventory_animation():
 	# 打开背包的弹出动画

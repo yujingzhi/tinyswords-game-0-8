@@ -43,6 +43,7 @@ class_name Level
 @export var rock_cluster_size_max: int = 10
 @export var rock_cluster_expand_chance: float = 0.65
 @export var gold_ratio: float = 0.45
+@export var rainbow_gold_spawn_chance: float = 0.03
 @export var max_tree_count: int = 220
 @export var max_rock_count: int = 140
 @export var max_gold_count: int = 140
@@ -87,6 +88,25 @@ class_name Level
 @export var tree_respawn_max_pending: int = 60
 @export var tree_respawn_attempts: int = 14
 
+@export var rock_respawn_enabled: bool = true
+@export var rock_respawn_delay_min: float = 10.0
+@export var rock_respawn_delay_max: float = 20.0
+@export var rock_respawn_max_pending: int = 40
+@export var rock_respawn_attempts: int = 14
+
+@export var gold_respawn_enabled: bool = true
+@export var gold_respawn_delay_min: float = 10.0
+@export var gold_respawn_delay_max: float = 20.0
+@export var gold_respawn_max_pending: int = 40
+@export var gold_respawn_attempts: int = 14
+
+@export var sheep_respawn_enabled: bool = true
+@export var sheep_respawn_delay_min: float = 12.0
+@export var sheep_respawn_delay_max: float = 24.0
+@export var sheep_respawn_max_pending: int = 10
+@export var sheep_respawn_attempts: int = 12
+@export var sheep_respawn_scatter_radius: float = 64.0
+
 @export var enable_expansion_loop: bool = true
 @export var energy_consumes_wood: bool = false
 @export var energy_per_wood: int = 2
@@ -129,6 +149,21 @@ class_name Level
 @export var input_debug_toggle_key: Key = KEY_F9
 @export var victory_cpu_level: int = 8
 @export var victory_require_full_piles: bool = true
+@export var endless_mode: bool = true
+@export var entropy_enabled: bool = true
+@export var entropy_per_sec: float = 0.03
+@export var entropy_wave_step: float = 10.0
+@export var entropy_wave_bonus_cap: int = 10
+@export var entropy_tree_respawn_delay_per_point: float = 0.02
+@export var save_enabled: bool = true
+@export var save_auto_interval_sec: float = 20.0
+@export var save_slot: String = "默认存档"
+@export var redwood_enabled: bool = true
+@export var redwood_growth_time_sec: float = 18.0
+@export var redwood_seed_place_clear_radius: float = 22.0
+@export var redwood_tree_scene: PackedScene = preload("res://Base_Object/Trees/Tree.tscn")
+@export var lamb_release_mutate_time_sec: float = 18.0
+@export var lamb_release_spawn_radius: float = 36.0
 @export var workers_per_warehouse: int = 3
 @export var warehouse_base_wood_cost: int = 30
 @export var warehouse_base_gold_cost: int = 10
@@ -186,6 +221,9 @@ var last_mouse_position: Vector2 = Vector2.ZERO
 var last_zoom_delta: float = 0.0
 var storage_node: Node2D
 var tree_respawn_queue: Array[Dictionary] = []
+var rock_respawn_queue: Array[Dictionary] = []
+var gold_respawn_queue: Array[Dictionary] = []
+var sheep_respawn_queue: Array[Dictionary] = []
 var game_time_sec: float = 0.0
 var game_ended: bool = false
 var game_won: bool = false
@@ -201,6 +239,7 @@ var pending_warehouse_cost_gold: int = 0
 var pending_warehouse_cost_meat: int = 0
 var free_warehouse_tokens: int = 1
 var warehouse_preview: Node2D
+var pending_loaded_payload: Dictionary = {}
 var warehouse_preview_sprite: Sprite2D
 var hovered_warehouse: Node2D
 var moving_warehouse: Node2D
@@ -209,12 +248,27 @@ var moving_warehouse_original_z: int = 0
 var player_level: int = 1
 var player_exp: int = 0
 var exp_to_next: int = 0
+var entropy: float = 0.0
+var save_timer: float = 0.0
+var placing_redwood_seed: bool = false
+var redwood_seed_preview: Node2D
+var redwood_seed_preview_label: Label
+var redwood_growth_queue: Array[Dictionary] = []
+var redwood_planted_cells: Dictionary = {}
 
 func _ready() -> void:
 	# 初始化关卡内所有生成物
 	set_process(true)
 	set_process_input(true)
 	add_to_group("level")
+	if save_enabled:
+		if pending_boot_save_slot != "":
+			save_slot = pending_boot_save_slot
+			pending_boot_save_slot = ""
+		save_slot = _normalize_save_slot(save_slot)
+		pending_loaded_payload = _read_save_payload(save_slot)
+		if not pending_loaded_payload.is_empty() and pending_loaded_payload.has("noise_seed"):
+			noise_seed = int(pending_loaded_payload["noise_seed"])
 	world_rng.seed = noise_seed
 	if objects_container:
 		for child in objects_container.get_children():
@@ -244,6 +298,10 @@ func _ready() -> void:
 	player_exp = max(player_exp, 0)
 	_recompute_exp_to_next()
 	_apply_worker_speed_multiplier()
+	save_timer = max(1.0, save_auto_interval_sec)
+	if not pending_loaded_payload.is_empty():
+		_apply_loaded_payload(pending_loaded_payload)
+		pending_loaded_payload.clear()
 	
 	# 🔥🔥🔥 启动延迟体检 🔥🔥🔥
 	print("\n================ 🕵️‍♂️ 游戏体检开始 ================")
@@ -290,6 +348,26 @@ func _ready() -> void:
 func _input(event: InputEvent) -> void:
 	if game_camera == null:
 		return
+	if placing_redwood_seed:
+		if event is InputEventMouseButton:
+			var seed_mouse := event as InputEventMouseButton
+			if seed_mouse.button_index == MOUSE_BUTTON_RIGHT and seed_mouse.pressed:
+				_cancel_redwood_seed_placement()
+				get_viewport().set_input_as_handled()
+				return
+			if seed_mouse.button_index == MOUSE_BUTTON_LEFT and seed_mouse.pressed:
+				var cell = _world_to_cell(get_global_mouse_position())
+				if _can_place_redwood_seed_at_cell(cell):
+					_place_redwood_seed_at_cell(cell)
+					_cancel_redwood_seed_placement()
+				get_viewport().set_input_as_handled()
+				return
+		if event is InputEventKey:
+			var seed_key := event as InputEventKey
+			if seed_key.pressed and not seed_key.echo and seed_key.keycode == KEY_ESCAPE:
+				_cancel_redwood_seed_placement()
+				get_viewport().set_input_as_handled()
+				return
 	if placing_warehouse:
 		if event is InputEventMouseButton:
 			var mouse_event := event as InputEventMouseButton
@@ -421,6 +499,7 @@ func spawn_objects() -> void:
 		
 		# 6. 添加到场景
 		objects_container.add_child(obj_instance)
+		_maybe_make_rainbow_gold(obj_instance)
 		_register_spawned_object(obj_instance)
 		
 		# 7. 关键一步：把地盘圈起来！(九宫格防御)
@@ -481,10 +560,75 @@ func spawn_sheep() -> void:
 		occupied_cells.append(random_cell)
 		spawned_count += 1
 
+func _configure_worker_instance(worker_instance: Node) -> void:
+	if worker_instance == null:
+		return
+	if "idle_texture" in worker_instance:
+		worker_instance.idle_texture = worker_empty_idle_texture
+	if "move_texture" in worker_instance:
+		worker_instance.move_texture = worker_empty_run_texture
+	if "grass_texture" in worker_instance:
+		worker_instance.grass_texture = worker_empty_idle_texture
+	if "worker_empty_idle_texture" in worker_instance:
+		worker_instance.worker_empty_idle_texture = worker_empty_idle_texture
+	if "worker_empty_move_texture" in worker_instance:
+		worker_instance.worker_empty_move_texture = worker_empty_run_texture
+	if "worker_carry_idle_texture" in worker_instance:
+		worker_instance.worker_carry_idle_texture = worker_idle_texture
+	if "worker_carry_move_texture" in worker_instance:
+		worker_instance.worker_carry_move_texture = worker_run_texture
+	if "worker_carry_gold_idle_texture" in worker_instance:
+		worker_instance.worker_carry_gold_idle_texture = worker_gold_idle_texture
+	if "worker_carry_gold_move_texture" in worker_instance:
+		worker_instance.worker_carry_gold_move_texture = worker_gold_run_texture
+	if "worker_carry_meat_idle_texture" in worker_instance:
+		worker_instance.worker_carry_meat_idle_texture = worker_meat_idle_texture
+	if "worker_carry_meat_move_texture" in worker_instance:
+		worker_instance.worker_carry_meat_move_texture = worker_meat_run_texture
+	if "worker_mode" in worker_instance:
+		worker_instance.worker_mode = true
+	if "logistics_enabled" in worker_instance:
+		worker_instance.logistics_enabled = true
+	if "logistics_group" in worker_instance:
+		worker_instance.logistics_group = worker_group_name
+	if "worker_axe_texture" in worker_instance:
+		worker_instance.worker_axe_texture = worker_axe_texture
+	if "worker_pickaxe_texture" in worker_instance:
+		worker_instance.worker_pickaxe_texture = worker_pickaxe_texture
+	if "worker_knife_texture" in worker_instance:
+		worker_instance.worker_knife_texture = worker_knife_texture
+	if "idle_frame_count" in worker_instance:
+		worker_instance.idle_frame_count = worker_idle_frame_count
+	if "move_frame_count" in worker_instance:
+		worker_instance.move_frame_count = worker_run_frame_count
+	if "grass_frame_count" in worker_instance:
+		worker_instance.grass_frame_count = worker_idle_frame_count
+	if "worker_work_frame_count" in worker_instance:
+		worker_instance.worker_work_frame_count = worker_work_frame_count
+	if "move_speed" in worker_instance:
+		worker_instance.move_speed = worker_move_speed
+	if "eat_chance" in worker_instance:
+		worker_instance.eat_chance = 0.0
+	if "drop_item_scene" in worker_instance:
+		worker_instance.drop_item_scene = null
+	if "health" in worker_instance:
+		worker_instance.health = 9999
+
+func _count_active_workers() -> int:
+	var count = 0
+	for node in get_tree().get_nodes_in_group(worker_group_name):
+		if node == null or not is_instance_valid(node):
+			continue
+		if node.is_queued_for_deletion():
+			continue
+		if "worker_mode" in node and node.worker_mode:
+			count += 1
+	return count
+
 func spawn_workers() -> void:
 	if worker_scene == null:
 		return
-	var existing_workers = get_tree().get_nodes_in_group(worker_group_name).size()
+	var existing_workers = _count_active_workers()
 	var cap = _get_worker_cap()
 	var to_spawn = cap - existing_workers
 	if to_spawn <= 0:
@@ -509,54 +653,7 @@ func spawn_workers() -> void:
 			worker_instance.global_position = _pick_worker_spawn_position()
 		else:
 			worker_instance.global_position = base_position + offset
-		if "idle_texture" in worker_instance:
-			worker_instance.idle_texture = worker_empty_idle_texture
-		if "move_texture" in worker_instance:
-			worker_instance.move_texture = worker_empty_run_texture
-		if "grass_texture" in worker_instance:
-			worker_instance.grass_texture = worker_empty_idle_texture
-		if "worker_empty_idle_texture" in worker_instance:
-			worker_instance.worker_empty_idle_texture = worker_empty_idle_texture
-		if "worker_empty_move_texture" in worker_instance:
-			worker_instance.worker_empty_move_texture = worker_empty_run_texture
-		if "worker_carry_idle_texture" in worker_instance:
-			worker_instance.worker_carry_idle_texture = worker_idle_texture
-		if "worker_carry_move_texture" in worker_instance:
-			worker_instance.worker_carry_move_texture = worker_run_texture
-		if "worker_carry_gold_idle_texture" in worker_instance:
-			worker_instance.worker_carry_gold_idle_texture = worker_gold_idle_texture
-		if "worker_carry_gold_move_texture" in worker_instance:
-			worker_instance.worker_carry_gold_move_texture = worker_gold_run_texture
-		if "worker_carry_meat_idle_texture" in worker_instance:
-			worker_instance.worker_carry_meat_idle_texture = worker_meat_idle_texture
-		if "worker_carry_meat_move_texture" in worker_instance:
-			worker_instance.worker_carry_meat_move_texture = worker_meat_run_texture
-		if "worker_mode" in worker_instance:
-			worker_instance.worker_mode = true
-		if "worker_axe_texture" in worker_instance:
-			worker_instance.worker_axe_texture = worker_axe_texture
-		if "worker_pickaxe_texture" in worker_instance:
-			worker_instance.worker_pickaxe_texture = worker_pickaxe_texture
-		if "worker_knife_texture" in worker_instance:
-			worker_instance.worker_knife_texture = worker_knife_texture
-		if "idle_frame_count" in worker_instance:
-			worker_instance.idle_frame_count = worker_idle_frame_count
-		if "move_frame_count" in worker_instance:
-			worker_instance.move_frame_count = worker_run_frame_count
-		if "worker_work_frame_count" in worker_instance:
-			worker_instance.worker_work_frame_count = worker_work_frame_count
-		if "grass_frame_count" in worker_instance:
-			worker_instance.grass_frame_count = worker_idle_frame_count
-		if "move_speed" in worker_instance:
-			worker_instance.move_speed = worker_move_speed
-		if "eat_chance" in worker_instance:
-			worker_instance.eat_chance = 0.0
-		if "drop_item_scene" in worker_instance:
-			worker_instance.drop_item_scene = null
-		if "health" in worker_instance:
-			worker_instance.health = 9999
-		if "logistics_group" in worker_instance:
-			worker_instance.logistics_group = worker_group_name
+		_configure_worker_instance(worker_instance)
 		objects_container.add_child(worker_instance)
 		spawned += 1
 	if spawn_from_warehouse:
@@ -663,11 +760,22 @@ func spawn_archers() -> void:
 func _process(delta: float) -> void:
 	if game_ended:
 		return
+	if entropy_enabled:
+		entropy = max(0.0, entropy + max(0.0, entropy_per_sec) * delta)
+	if save_enabled:
+		save_timer -= delta
+		if save_timer <= 0.0:
+			save_timer = max(1.0, save_auto_interval_sec)
+			_save_game()
+	_update_redwood_system(delta)
 	_update_warehouse_hover_and_preview()
 	_apply_edge_scroll(delta)
 	_clamp_view_to_map()
 	_update_input_debug(delta)
 	_update_tree_respawn(delta)
+	_update_rock_respawn(delta)
+	_update_gold_respawn(delta)
+	_update_sheep_respawn(delta)
 	_check_end_conditions()
 	_update_meta_hud(delta)
 	game_time_sec += delta
@@ -735,10 +843,17 @@ func _compute_next_wave_size() -> int:
 	var bonus = 0
 	if threat_energy_step > 0.0:
 		bonus = int(energy_points / threat_energy_step)
+	var entropy_bonus = 0
+	if entropy_enabled and entropy_wave_step > 0.0:
+		entropy_bonus = int(entropy / entropy_wave_step)
+		entropy_bonus = clamp(entropy_bonus, 0, max(0, entropy_wave_bonus_cap))
 	var wave_count = archer_wave_base + bonus
+	wave_count += entropy_bonus
 	return min(wave_count, archer_wave_cap)
 
 func _compute_objective_text() -> String:
+	if endless_mode:
+		return "目标: 生存并扩张"
 	var parts: Array[String] = []
 	if victory_cpu_level > 0:
 		parts.append("CPU " + str(cpu_level) + "/" + str(victory_cpu_level))
@@ -749,7 +864,7 @@ func _compute_objective_text() -> String:
 	return "目标: " + " 或 ".join(parts)
 
 func _compute_hint_text(wood_count: int, gold_count: int) -> String:
-	if victory_cpu_level > 0 and cpu_level < victory_cpu_level:
+	if not endless_mode and victory_cpu_level > 0 and cpu_level < victory_cpu_level:
 		var need_levels = victory_cpu_level - cpu_level
 		var per = max(1, gold_upgrade_cost)
 		var total_need = need_levels * per
@@ -775,6 +890,8 @@ func _check_end_conditions() -> void:
 		if hp_val != null and int(hp_val) <= 0:
 			_end_game(false, "player_dead")
 			return
+	if endless_mode:
+		return
 	var win_by_cpu = victory_cpu_level > 0 and cpu_level >= victory_cpu_level
 	var win_by_piles = collection_pile_enabled and victory_require_full_piles and collection_piles.size() >= collection_pile_max and collection_pile_max > 0
 	if win_by_cpu or win_by_piles:
@@ -818,7 +935,13 @@ func _on_sheep_died(world_pos: Vector2, sheep: Node) -> void:
 	if sheep != null and is_instance_valid(sheep):
 		if "worker_mode" in sheep and sheep.worker_mode:
 			return
+		if "pickup_item_enabled" in sheep and sheep.pickup_item_enabled:
+			return
 	_add_experience(exp_per_sheep_kill)
+	if not auto_workers_only and sheep_respawn_enabled:
+		if sheep_respawn_queue.size() < sheep_respawn_max_pending:
+			var delay = randf_range(sheep_respawn_delay_min, sheep_respawn_delay_max)
+			sheep_respawn_queue.append({"time": delay, "pos": world_pos})
 
 func _apply_edge_scroll(delta: float) -> void:
 	if not edge_scroll_enabled or game_camera == null:
@@ -1162,10 +1285,217 @@ func _cancel_warehouse_placement() -> void:
 	pending_warehouse_cost_meat = 0
 	_clear_warehouse_preview()
 
+func request_plant_redwood_seed() -> void:
+	if game_ended:
+		return
+	if not redwood_enabled:
+		return
+	var ui = _get_interface()
+	if ui == null:
+		return
+	var seeds = 0
+	if "inventory_data" in ui:
+		seeds = int(ui.inventory_data.get("redwood_seed", 0))
+	if seeds <= 0:
+		placing_redwood_seed = false
+		_clear_redwood_seed_preview()
+		return
+	placing_redwood_seed = true
+	_ensure_redwood_seed_preview()
+
+func request_release_lamb() -> void:
+	if game_ended:
+		return
+	var ui = _get_interface()
+	if ui == null or not ("inventory_data" in ui):
+		return
+	var count = int(ui.inventory_data.get("lamb", 0))
+	if count <= 0:
+		return
+	ui.inventory_data["lamb"] = count - 1
+	ui.refresh_inventory_ui()
+	if sheep_scene == null:
+		return
+	var player = _get_player() as Node2D
+	if player == null:
+		return
+	var spawn_pos = player.global_position + Vector2(world_rng.randf_range(-lamb_release_spawn_radius, lamb_release_spawn_radius), world_rng.randf_range(-lamb_release_spawn_radius, lamb_release_spawn_radius))
+	var lamb_instance = sheep_scene.instantiate()
+	if lamb_instance == null:
+		return
+	if lamb_instance is Node2D:
+		(lamb_instance as Node2D).global_position = spawn_pos
+	objects_container.add_child(lamb_instance)
+	if lamb_instance.has_method("configure_released_lamb"):
+		lamb_instance.call("configure_released_lamb", lamb_release_mutate_time_sec)
+	if lamb_instance.has_signal("died"):
+		if not lamb_instance.died.is_connected(_on_sheep_died.bind(lamb_instance)):
+			lamb_instance.died.connect(_on_sheep_died.bind(lamb_instance))
+	if lamb_instance.has_method("setup_roam"):
+		var cell = _world_to_cell(spawn_pos)
+		var roam_layer = sheep_spawn_layer
+		if use_noise_terrain and ground_layer:
+			roam_layer = ground_layer
+		lamb_instance.call("setup_roam", roam_layer, cell, sheep_roam_cell_radius)
+
+func _update_redwood_system(delta: float) -> void:
+	if redwood_enabled:
+		_update_redwood_growth(delta)
+	_update_redwood_seed_preview()
+
+func _update_redwood_seed_preview() -> void:
+	if not placing_redwood_seed:
+		_clear_redwood_seed_preview()
+		return
+	var mouse_world = get_global_mouse_position()
+	var cell = _world_to_cell(mouse_world)
+	var world_pos = _cell_to_world(cell)
+	var can_place = _can_place_redwood_seed_at_cell(cell)
+	_ensure_redwood_seed_preview()
+	if redwood_seed_preview != null and is_instance_valid(redwood_seed_preview):
+		redwood_seed_preview.global_position = world_pos + Vector2(0, -22)
+		if redwood_seed_preview_label != null and is_instance_valid(redwood_seed_preview_label):
+			redwood_seed_preview_label.modulate = Color(0.9, 1.0, 0.9, 0.95) if can_place else Color(1.0, 0.55, 0.55, 0.95)
+
+func _ensure_redwood_seed_preview() -> void:
+	if redwood_seed_preview != null and is_instance_valid(redwood_seed_preview):
+		redwood_seed_preview.visible = true
+		return
+	redwood_seed_preview = Node2D.new()
+	redwood_seed_preview.name = "RedwoodSeedPreview"
+	redwood_seed_preview.z_index = 96
+	var label = Label.new()
+	label.text = "红木种子"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var settings = LabelSettings.new()
+	settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	settings.font_size = 18
+	settings.outline_size = 5
+	settings.outline_color = Color(0, 0, 0, 1)
+	label.label_settings = settings
+	redwood_seed_preview.add_child(label)
+	redwood_seed_preview_label = label
+	if objects_container:
+		objects_container.add_child(redwood_seed_preview)
+	else:
+		add_child(redwood_seed_preview)
+
+func _clear_redwood_seed_preview() -> void:
+	if redwood_seed_preview != null and is_instance_valid(redwood_seed_preview):
+		redwood_seed_preview.queue_free()
+	redwood_seed_preview = null
+	redwood_seed_preview_label = null
+
+func _cancel_redwood_seed_placement() -> void:
+	placing_redwood_seed = false
+	_clear_redwood_seed_preview()
+
+func _get_redwood_seed_place_fail_reason(cell: Vector2i) -> String:
+	if not redwood_enabled:
+		return "系统未启用"
+	if not _is_grass_cell(cell):
+		return "不是可放置地形"
+	if _is_water_cell(cell):
+		return "水面不可放置"
+	if redwood_planted_cells.has(cell):
+		return "已种下"
+	var world_pos = _cell_to_world(cell)
+	var obstacles = get_tree().get_nodes_in_group("obstacle")
+	for obj in obstacles:
+		if not (obj is Node2D):
+			continue
+		if not is_instance_valid(obj):
+			continue
+		if obj.global_position.distance_to(world_pos) <= redwood_seed_place_clear_radius:
+			return "附近有障碍物"
+	var storages = get_tree().get_nodes_in_group("storage")
+	for s in storages:
+		if not (s is Node2D):
+			continue
+		if not is_instance_valid(s):
+			continue
+		if s.global_position.distance_to(world_pos) <= redwood_seed_place_clear_radius:
+			return "附近已有仓库"
+	var piles = get_tree().get_nodes_in_group("collection_pile")
+	for p in piles:
+		if not (p is Node2D):
+			continue
+		if not is_instance_valid(p):
+			continue
+		if p.global_position.distance_to(world_pos) <= redwood_seed_place_clear_radius:
+			return "附近已有收集桩"
+	return ""
+
+func _can_place_redwood_seed_at_cell(cell: Vector2i) -> bool:
+	return _get_redwood_seed_place_fail_reason(cell) == ""
+
+func _place_redwood_seed_at_cell(cell: Vector2i) -> void:
+	var ui = _get_interface()
+	if ui == null:
+		return
+	if not ("inventory_data" in ui):
+		return
+	var seeds = int(ui.inventory_data.get("redwood_seed", 0))
+	if seeds <= 0:
+		return
+	ui.inventory_data["redwood_seed"] = seeds - 1
+	ui.refresh_inventory_ui()
+	redwood_planted_cells[cell] = true
+	redwood_growth_queue.append({"cell_x": cell.x, "cell_y": cell.y, "time": max(0.1, redwood_growth_time_sec)})
+
+func _update_redwood_growth(delta: float) -> void:
+	if redwood_growth_queue.is_empty():
+		return
+	for i in range(redwood_growth_queue.size() - 1, -1, -1):
+		var item = redwood_growth_queue[i]
+		item["time"] = float(item.get("time", 0.0)) - delta
+		redwood_growth_queue[i] = item
+		if float(item["time"]) <= 0.0:
+			var cell = Vector2i(int(item.get("cell_x", 0)), int(item.get("cell_y", 0)))
+			_spawn_redwood_tree_at_cell(cell)
+			redwood_planted_cells.erase(cell)
+			redwood_growth_queue.remove_at(i)
+
+func _spawn_redwood_tree_at_cell(cell: Vector2i) -> void:
+	if redwood_tree_scene == null:
+		return
+	if not _is_grass_cell(cell) or _is_water_cell(cell):
+		return
+	var world_pos = _cell_to_world(cell)
+	if not _is_respawn_position_clear(world_pos):
+		return
+	var inst = redwood_tree_scene.instantiate()
+	if inst == null:
+		return
+	if inst is Node2D:
+		(inst as Node2D).position = world_pos
+	if "drop_item_type" in inst:
+		inst.drop_item_type = "redwood"
+	if "min_drop" in inst:
+		inst.min_drop = 2
+	if "max_drop" in inst:
+		inst.max_drop = 4
+	if "type" in inst:
+		inst.type = "Tree"
+	if "redwood_seed_drop_chance" in inst:
+		inst.redwood_seed_drop_chance = 0.0
+	if objects_container:
+		objects_container.add_child(inst)
+	else:
+		add_child(inst)
+	_register_spawned_object(inst)
+	var sprite = inst.get_node_or_null("Sprite2D") as Sprite2D
+	if sprite != null:
+		sprite.modulate = Color(1.0, 0.35, 0.35, 1.0)
+
 func _update_warehouse_hover_and_preview() -> void:
 	var mouse_world = get_global_mouse_position()
 	hovered_warehouse = null
 	var best = 28.0
+	if placing_redwood_seed:
+		hovered_warehouse = null
+		return
 	if not placing_warehouse:
 		var storages = get_tree().get_nodes_in_group("storage")
 		for s in storages:
@@ -1562,8 +1892,25 @@ func _spawn_object_at_cell(scenes: Array[PackedScene], cell: Vector2i, occupied:
 	var obj_instance = scene.instantiate()
 	obj_instance.position = _cell_to_world(cell)
 	objects_container.add_child(obj_instance)
+	_maybe_make_rainbow_gold(obj_instance)
 	_register_spawned_object(obj_instance)
 	_mark_occupied(cell, occupied)
+
+func _maybe_make_rainbow_gold(obj_instance: Node) -> void:
+	if obj_instance == null:
+		return
+	if not ("drop_item_type" in obj_instance):
+		return
+	if str(obj_instance.drop_item_type) != "gold":
+		return
+	if rainbow_gold_spawn_chance <= 0.0:
+		return
+	if world_rng.randf() >= rainbow_gold_spawn_chance:
+		return
+	obj_instance.drop_item_type = "rainbow_gold"
+	var sprite = obj_instance.get_node_or_null("Sprite2D") as Sprite2D
+	if sprite != null:
+		sprite.modulate = Color.from_hsv(world_rng.randf(), 0.75, 1.0, 1.0)
 
 func _register_spawned_object(obj_instance: Node) -> void:
 	if obj_instance == null:
@@ -1582,7 +1929,7 @@ func _award_player_exp_for_destroyed_object(object_type: String, drop_type: Stri
 		amount = exp_per_gold_harvest
 	elif obj.find("rock") != -1:
 		amount = exp_per_rock_harvest
-	elif drop == "gold":
+	elif drop == "gold" or drop == "rainbow_gold":
 		amount = exp_per_gold_harvest
 	if amount > 0:
 		_add_experience(amount)
@@ -1590,14 +1937,31 @@ func _award_player_exp_for_destroyed_object(object_type: String, drop_type: Stri
 func _on_object_destroyed(object_type: String, drop_type: String, _world_position: Vector2) -> void:
 	if not game_ended:
 		_award_player_exp_for_destroyed_object(object_type, drop_type)
-	if not tree_respawn_enabled:
-		return
-	if drop_type != "wood" and object_type.to_lower().find("tree") == -1:
-		return
-	if tree_respawn_queue.size() >= tree_respawn_max_pending:
-		return
-	var delay = randf_range(tree_respawn_delay_min, tree_respawn_delay_max)
-	tree_respawn_queue.append({"time": delay})
+	var obj = object_type.to_lower()
+	if obj.find("tree") != -1:
+		if not tree_respawn_enabled:
+			return
+		if tree_respawn_queue.size() >= tree_respawn_max_pending:
+			return
+		var delay = randf_range(tree_respawn_delay_min, tree_respawn_delay_max)
+		if entropy_enabled and entropy_tree_respawn_delay_per_point > 0.0:
+			var mult = 1.0 + entropy * entropy_tree_respawn_delay_per_point
+			delay *= clamp(mult, 1.0, 6.0)
+		tree_respawn_queue.append({"time": delay})
+	elif obj.find("rock") != -1:
+		if not rock_respawn_enabled:
+			return
+		if rock_respawn_queue.size() >= rock_respawn_max_pending:
+			return
+		var delay = randf_range(rock_respawn_delay_min, rock_respawn_delay_max)
+		rock_respawn_queue.append({"time": delay})
+	elif obj.find("gold") != -1:
+		if not gold_respawn_enabled:
+			return
+		if gold_respawn_queue.size() >= gold_respawn_max_pending:
+			return
+		var delay = randf_range(gold_respawn_delay_min, gold_respawn_delay_max)
+		gold_respawn_queue.append({"time": delay})
 
 func _update_tree_respawn(delta: float) -> void:
 	if not tree_respawn_enabled:
@@ -1640,6 +2004,110 @@ func _spawn_tree_respawn() -> bool:
 			return true
 	return false
 
+func _update_rock_respawn(delta: float) -> void:
+	if not rock_respawn_enabled:
+		return
+	if rock_respawn_queue.is_empty():
+		return
+	for i in range(rock_respawn_queue.size() - 1, -1, -1):
+		var item = rock_respawn_queue[i]
+		item["time"] = float(item["time"]) - delta
+		rock_respawn_queue[i] = item
+		if float(item["time"]) <= 0.0:
+			if _spawn_respawn_object_from_set("rock", rock_respawn_attempts):
+				rock_respawn_queue.remove_at(i)
+			else:
+				item["time"] = 1.5
+				rock_respawn_queue[i] = item
+
+func _update_gold_respawn(delta: float) -> void:
+	if not gold_respawn_enabled:
+		return
+	if gold_respawn_queue.is_empty():
+		return
+	for i in range(gold_respawn_queue.size() - 1, -1, -1):
+		var item = gold_respawn_queue[i]
+		item["time"] = float(item["time"]) - delta
+		gold_respawn_queue[i] = item
+		if float(item["time"]) <= 0.0:
+			if _spawn_respawn_object_from_set("gold", gold_respawn_attempts):
+				gold_respawn_queue.remove_at(i)
+			else:
+				item["time"] = 1.5
+				gold_respawn_queue[i] = item
+
+func _spawn_respawn_object_from_set(set_key: String, attempts_raw: int) -> bool:
+	var sets = _pick_object_scenes_by_type()
+	var scenes = _to_packed_scene_array(sets.get(set_key, []))
+	if scenes.is_empty():
+		return false
+	var attempts = max(1, attempts_raw)
+	var candidate_cells: Array[Vector2i] = []
+	if use_noise_terrain and not land_cells.is_empty():
+		candidate_cells = land_cells
+	else:
+		candidate_cells = spawn_layer.get_used_cells()
+	if candidate_cells.is_empty():
+		return false
+	for i in range(attempts):
+		var cell = candidate_cells[world_rng.randi_range(0, candidate_cells.size() - 1)]
+		var world_pos = _cell_to_world(cell)
+		if _is_respawn_position_clear(world_pos):
+			var scene = scenes[world_rng.randi_range(0, scenes.size() - 1)]
+			var obj_instance = scene.instantiate()
+			obj_instance.position = world_pos
+			objects_container.add_child(obj_instance)
+			_maybe_make_rainbow_gold(obj_instance)
+			_register_spawned_object(obj_instance)
+			return true
+	return false
+
+func _update_sheep_respawn(delta: float) -> void:
+	if auto_workers_only or not sheep_respawn_enabled:
+		return
+	if sheep_respawn_queue.is_empty():
+		return
+	for i in range(sheep_respawn_queue.size() - 1, -1, -1):
+		var item = sheep_respawn_queue[i]
+		item["time"] = float(item["time"]) - delta
+		sheep_respawn_queue[i] = item
+		if float(item["time"]) <= 0.0:
+			var pos = Vector2(item.get("pos", Vector2.ZERO))
+			if _spawn_sheep_respawn(pos):
+				sheep_respawn_queue.remove_at(i)
+			else:
+				item["time"] = 1.5
+				sheep_respawn_queue[i] = item
+
+func _spawn_sheep_respawn(origin_world_pos: Vector2) -> bool:
+	if sheep_scene == null:
+		return false
+	var attempts = max(1, sheep_respawn_attempts)
+	for i in range(attempts):
+		var candidate_pos = origin_world_pos + Vector2(
+			randf_range(-sheep_respawn_scatter_radius, sheep_respawn_scatter_radius),
+			randf_range(-sheep_respawn_scatter_radius, sheep_respawn_scatter_radius)
+		)
+		if not _is_respawn_position_clear(candidate_pos):
+			continue
+		var sheep_instance = sheep_scene.instantiate()
+		if sheep_instance == null:
+			return false
+		if sheep_instance is Node2D:
+			(sheep_instance as Node2D).global_position = candidate_pos
+		objects_container.add_child(sheep_instance)
+		if sheep_instance.has_signal("died"):
+			if not sheep_instance.died.is_connected(_on_sheep_died):
+				sheep_instance.died.connect(_on_sheep_died.bind(sheep_instance))
+		if sheep_instance.has_method("setup_roam"):
+			var roam_layer = sheep_spawn_layer
+			if use_noise_terrain and ground_layer:
+				roam_layer = ground_layer
+			var cell = roam_layer.local_to_map(roam_layer.to_local(candidate_pos))
+			sheep_instance.setup_roam(roam_layer, cell, sheep_roam_cell_radius)
+		return true
+	return false
+
 func _is_respawn_position_clear(world_pos: Vector2) -> bool:
 	var obstacles = get_tree().get_nodes_in_group("obstacle")
 	for obj in obstacles:
@@ -1667,3 +2135,354 @@ func _cell_to_world(cell: Vector2i) -> Vector2:
 	if layer != null:
 		return layer.map_to_local(cell)
 	return Vector2(cell) * 64.0
+
+func _normalize_save_slot(value: String) -> String:
+	var s = value.strip_edges()
+	if s.is_empty():
+		s = "默认存档"
+	s = s.replace("/", "_")
+	s = s.replace("\\", "_")
+	s = s.replace("..", "_")
+	s = s.replace(":", "_")
+	s = s.replace("*", "_")
+	s = s.replace("?", "_")
+	s = s.replace("\"", "_")
+	s = s.replace("<", "_")
+	s = s.replace(">", "_")
+	s = s.replace("|", "_")
+	if s.length() > 40:
+		s = s.substr(0, 40)
+	return s
+
+func _get_save_path(slot: String) -> String:
+	return "user://save_" + _normalize_save_slot(slot) + ".json"
+
+func set_save_slot(new_slot: String) -> void:
+	save_slot = _normalize_save_slot(new_slot)
+
+static var pending_boot_save_slot: String = ""
+
+func get_save_slot() -> String:
+	return save_slot
+
+func list_save_slots() -> Array[String]:
+	var result: Array[String] = []
+	var dir = DirAccess.open("user://")
+	if dir == null:
+		return result
+	dir.list_dir_begin()
+	while true:
+		var file_name = dir.get_next()
+		if file_name == "":
+			break
+		if dir.current_is_dir():
+			continue
+		if file_name.begins_with("save_") and file_name.ends_with(".json"):
+			var slot = file_name.substr(5, file_name.length() - 5 - 5)
+			result.append(slot)
+	dir.list_dir_end()
+	result.sort()
+	return result
+
+func rename_save_slot(from_slot: String, to_slot: String) -> bool:
+	var from_name = _normalize_save_slot(from_slot)
+	var to_name = _normalize_save_slot(to_slot)
+	if from_name == to_name:
+		return false
+	var from_path = _get_save_path(from_name)
+	var to_path = _get_save_path(to_name)
+	if not FileAccess.file_exists(from_path):
+		return false
+	if FileAccess.file_exists(to_path):
+		return false
+	var abs_from = ProjectSettings.globalize_path(from_path)
+	var abs_to = ProjectSettings.globalize_path(to_path)
+	if DirAccess.rename_absolute(abs_from, abs_to) != OK:
+		return false
+	save_slot = to_name
+	return true
+
+func request_manual_load(slot: String = "") -> bool:
+	if not save_enabled:
+		return false
+	var target = save_slot if slot.strip_edges().is_empty() else slot
+	target = _normalize_save_slot(target)
+	var path = _get_save_path(target)
+	if not FileAccess.file_exists(path):
+		return false
+	pending_boot_save_slot = target
+	get_tree().reload_current_scene()
+	return true
+
+func _load_save_if_enabled() -> bool:
+	if not save_enabled:
+		return false
+	var ui = _get_interface()
+	if ui == null:
+		return false
+	save_slot = _normalize_save_slot(save_slot)
+	var d = _read_save_payload(save_slot)
+	if d.is_empty():
+		return false
+	_apply_loaded_payload(d)
+	return true
+
+func _read_save_payload(slot: String) -> Dictionary:
+	var normalized = _normalize_save_slot(slot)
+	var path = _get_save_path(normalized)
+	if not FileAccess.file_exists(path):
+		return {}
+	var f = FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return {}
+	var text = f.get_as_text()
+	f.close()
+	var data = JSON.parse_string(text)
+	if typeof(data) != TYPE_DICTIONARY:
+		return {}
+	return data as Dictionary
+
+func _apply_loaded_payload(d: Dictionary) -> void:
+	if d.has("cpu_level"):
+		cpu_level = max(1, int(d["cpu_level"]))
+	if d.has("enemy_kill_exp"):
+		enemy_kill_exp = max(0, int(d["enemy_kill_exp"]))
+	if d.has("waves_survived"):
+		waves_survived = max(0, int(d["waves_survived"]))
+	if d.has("player_level"):
+		player_level = max(1, int(d["player_level"]))
+	if d.has("player_exp"):
+		player_exp = max(0, int(d["player_exp"]))
+	if d.has("entropy"):
+		entropy = max(0.0, float(d["entropy"]))
+	if d.has("energy_points"):
+		energy_points = float(d["energy_points"])
+	if d.has("archer_wave_timer"):
+		archer_wave_timer = max(0.0, float(d["archer_wave_timer"]))
+	if d.has("wood_burn_timer"):
+		wood_burn_timer = max(0.0, float(d["wood_burn_timer"]))
+	if d.has("pile_build_timer"):
+		pile_build_timer = max(0.0, float(d["pile_build_timer"]))
+	if d.has("game_time_sec"):
+		game_time_sec = max(0.0, float(d["game_time_sec"]))
+	if d.has("enemy_kills"):
+		enemy_kills = max(0, int(d["enemy_kills"]))
+	if d.has("free_warehouse_tokens"):
+		free_warehouse_tokens = max(0, int(d["free_warehouse_tokens"]))
+	logistics_multiplier = 1.0 + float(cpu_level - 1) * logistics_speed_per_level
+	_apply_worker_speed_multiplier()
+	_recompute_exp_to_next()
+	var ui = _get_interface()
+	if ui != null:
+		if "inventory_data" in ui and d.has("inventory_data") and typeof(d["inventory_data"]) == TYPE_DICTIONARY:
+			ui.inventory_data = d["inventory_data"]
+		if d.has("quickbar_items") and typeof(d["quickbar_items"]) == TYPE_ARRAY and "quickbar_items" in ui:
+			var raw := d["quickbar_items"] as Array
+			var out: Array[String] = []
+			for v in raw:
+				out.append(String(v))
+			var target_size = int((ui.quickbar_items as Array).size())
+			while out.size() < target_size:
+				out.append("")
+			if out.size() > target_size:
+				out = out.slice(0, target_size)
+			ui.quickbar_items = out
+		if ui.has_method("refresh_inventory_ui"):
+			ui.refresh_inventory_ui()
+	var player = _get_player()
+	if player != null and d.has("player_pos") and typeof(d["player_pos"]) == TYPE_DICTIONARY:
+		var pos_d := d["player_pos"] as Dictionary
+		if pos_d.has("x") and pos_d.has("y"):
+			player.global_position = Vector2(float(pos_d["x"]), float(pos_d["y"]))
+			_reset_camera()
+	redwood_growth_queue.clear()
+	redwood_planted_cells.clear()
+	if redwood_enabled and d.has("redwood_growth") and typeof(d["redwood_growth"]) == TYPE_ARRAY:
+		for item in d["redwood_growth"]:
+			if typeof(item) != TYPE_DICTIONARY:
+				continue
+			var it := item as Dictionary
+			if not (it.has("cell_x") and it.has("cell_y") and it.has("time")):
+				continue
+			var cx = int(it["cell_x"])
+			var cy = int(it["cell_y"])
+			var t = max(0.0, float(it["time"]))
+			redwood_growth_queue.append({"cell_x": cx, "cell_y": cy, "time": t})
+			redwood_planted_cells[Vector2i(cx, cy)] = true
+	_restore_warehouses_from_save(d)
+	_restore_collection_piles_from_save(d)
+	_restore_workers_from_save(d)
+
+func _restore_warehouses_from_save(d: Dictionary) -> void:
+	var storages = get_tree().get_nodes_in_group("storage")
+	for node in storages:
+		if node == null or not is_instance_valid(node):
+			continue
+		if node.name == "GlobalStorage":
+			continue
+		node.queue_free()
+	warehouse_count = 0
+	if not d.has("warehouses") or typeof(d["warehouses"]) != TYPE_ARRAY:
+		if d.has("warehouse_count"):
+			warehouse_count = max(0, int(d["warehouse_count"]))
+		return
+	var spawned = 0
+	for item in d["warehouses"]:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var it := item as Dictionary
+		if not (it.has("x") and it.has("y")):
+			continue
+		_spawn_warehouse_at_position(Vector2(float(it["x"]), float(it["y"])))
+		spawned += 1
+	warehouse_count = spawned
+
+func _restore_collection_piles_from_save(d: Dictionary) -> void:
+	var piles = get_tree().get_nodes_in_group("collection_pile")
+	for node in piles:
+		if node == null or not is_instance_valid(node):
+			continue
+		node.queue_free()
+	collection_piles.clear()
+	if not d.has("collection_piles") or typeof(d["collection_piles"]) != TYPE_ARRAY:
+		return
+	for item in d["collection_piles"]:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var it := item as Dictionary
+		if not (it.has("x") and it.has("y")):
+			continue
+		_spawn_collection_pile_at_position_force(Vector2(float(it["x"]), float(it["y"])))
+	_update_logistics_power()
+
+func _spawn_collection_pile_at_position_force(pile_position: Vector2) -> void:
+	var pile = Node2D.new()
+	pile.name = "CollectionPile"
+	pile.add_to_group("collection_pile")
+	pile.global_position = pile_position
+	if collection_pile_texture:
+		var sprite = Sprite2D.new()
+		sprite.texture = collection_pile_texture
+		pile.add_child(sprite)
+	if objects_container:
+		objects_container.add_child(pile)
+	else:
+		add_child(pile)
+	collection_piles.append(pile)
+
+func _restore_workers_from_save(d: Dictionary) -> void:
+	var workers = get_tree().get_nodes_in_group(worker_group_name)
+	for w in workers:
+		if w == null or not is_instance_valid(w):
+			continue
+		if "worker_mode" in w and w.worker_mode:
+			w.queue_free()
+	if not d.has("workers") or typeof(d["workers"]) != TYPE_ARRAY:
+		call_deferred("spawn_workers")
+		return
+	if worker_scene == null:
+		call_deferred("spawn_workers")
+		return
+	for item in d["workers"]:
+		if typeof(item) != TYPE_DICTIONARY:
+			continue
+		var it := item as Dictionary
+		if not (it.has("x") and it.has("y")):
+			continue
+		var worker_instance = worker_scene.instantiate()
+		if worker_instance == null:
+			continue
+		if worker_instance is Node2D:
+			(worker_instance as Node2D).global_position = Vector2(float(it["x"]), float(it["y"]))
+		_configure_worker_instance(worker_instance)
+		if objects_container:
+			objects_container.add_child(worker_instance)
+		else:
+			add_child(worker_instance)
+	_apply_worker_speed_multiplier()
+	call_deferred("spawn_workers")
+
+func _save_game() -> bool:
+	if not save_enabled:
+		return false
+	var ui = _get_interface()
+	if ui == null:
+		return false
+	var payload: Dictionary = {
+		"version": 3,
+		"saved_at_unix": Time.get_unix_time_from_system(),
+		"noise_seed": int(noise_seed),
+		"cpu_level": int(cpu_level),
+		"enemy_kill_exp": int(enemy_kill_exp),
+		"waves_survived": int(waves_survived),
+		"player_level": int(player_level),
+		"player_exp": int(player_exp),
+		"entropy": float(entropy),
+		"energy_points": float(energy_points),
+		"archer_wave_timer": float(archer_wave_timer),
+		"wood_burn_timer": float(wood_burn_timer),
+		"pile_build_timer": float(pile_build_timer),
+		"game_time_sec": float(game_time_sec),
+		"enemy_kills": int(enemy_kills),
+		"warehouse_count": int(warehouse_count),
+		"free_warehouse_tokens": int(free_warehouse_tokens)
+	}
+	var player = _get_player()
+	if player != null:
+		payload["player_pos"] = {"x": float(player.global_position.x), "y": float(player.global_position.y)}
+	if redwood_enabled and not redwood_growth_queue.is_empty():
+		var out: Array = []
+		for item in redwood_growth_queue:
+			var cx = int(item.get("cell_x", 0))
+			var cy = int(item.get("cell_y", 0))
+			var t = float(item.get("time", 0.0))
+			out.append({"cell_x": cx, "cell_y": cy, "time": t})
+		payload["redwood_growth"] = out
+	if "inventory_data" in ui:
+		payload["inventory_data"] = ui.inventory_data
+	if "quickbar_items" in ui:
+		payload["quickbar_items"] = ui.quickbar_items
+	var warehouses_out: Array = []
+	for node in get_tree().get_nodes_in_group("storage"):
+		if node == null or not is_instance_valid(node):
+			continue
+		if node.name == "GlobalStorage":
+			continue
+		if not (node is Node2D):
+			continue
+		var p = (node as Node2D).global_position
+		warehouses_out.append({"x": float(p.x), "y": float(p.y)})
+	payload["warehouses"] = warehouses_out
+	var piles_out: Array = []
+	for node in get_tree().get_nodes_in_group("collection_pile"):
+		if node == null or not is_instance_valid(node):
+			continue
+		if not (node is Node2D):
+			continue
+		var p = (node as Node2D).global_position
+		piles_out.append({"x": float(p.x), "y": float(p.y)})
+	payload["collection_piles"] = piles_out
+	var workers_out: Array = []
+	for node in get_tree().get_nodes_in_group(worker_group_name):
+		if node == null or not is_instance_valid(node):
+			continue
+		if not (node is Node2D):
+			continue
+		if "worker_mode" in node and node.worker_mode:
+			var p = (node as Node2D).global_position
+			workers_out.append({"x": float(p.x), "y": float(p.y)})
+	payload["workers"] = workers_out
+	var json_text = JSON.stringify(payload)
+	save_slot = _normalize_save_slot(save_slot)
+	var path = _get_save_path(save_slot)
+	var f = FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string(json_text)
+	f.close()
+	return true
+
+func request_manual_save(slot: String = "") -> bool:
+	if not slot.strip_edges().is_empty():
+		set_save_slot(slot)
+	return _save_game()

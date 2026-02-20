@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://d4bvsbmmdemaa" path="res://Base_Object/PhysicItem.gd" id="1_juqr8"]
 [ext_resource type="AudioStream" uid="uid://6idg7p6i4qcf" path="res://Audio/SFX_Item_Drop.tres" id="2_qgsat"]
 [ext_resource type="AudioStream" uid="uid://sig4t7t5eyr3" path="res://Audio/SFX_Item_Pickup.tres" id="3_ddrya"]
+[ext_resource type="FontFile" uid="uid://ckt0umhc75sre" path="res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf" id="4_text"]
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_qgsat"]
 bounce = 0.5
@@ -11,6 +12,12 @@ bounce = 0.5
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_juqr8"]
 radius = 16.0
+
+[sub_resource type="LabelSettings" id="LabelSettings_text"]
+font = ExtResource("4_text")
+font_size = 18
+outline_size = 4
+outline_color = Color(0, 0, 0, 1)
 
 [node name="RealDropItem" type="RigidBody2D" unique_id=753630725]
 physics_material_override = SubResource("PhysicsMaterial_qgsat")
@@ -22,6 +29,12 @@ sfx_drop = ExtResource("2_qgsat")
 sfx_pickup = ExtResource("3_ddrya")
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=820624464]
+
+[node name="TextLabel" type="Label" parent="." unique_id=95387010]
+z_index = 10
+label_settings = SubResource("LabelSettings_text")
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1288456694]
 shape = SubResource("CircleShape2D_8yhwc")

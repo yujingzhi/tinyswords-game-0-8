@@ -21,6 +21,9 @@ signal died(world_position: Vector2)
 @export var max_drop: int = 2
 @export var drop_item_type: String = "meat"
 @export var drop_item_scene: PackedScene = preload("res://Base_Object/PhysicItem.tscn")
+@export var lamb_drop_chance: float = 0.03
+@export var lamb_item_type: String = "lamb"
+@export var lamb_entity_scene: PackedScene = preload("res://Base_Object/Animals/Sheep/Sheep.tscn")
 @export var idle_texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Idle.png")
 @export var move_texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Move.png")
 @export var grass_texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Grass.png")
@@ -61,8 +64,10 @@ signal died(world_position: Vector2)
 @onready var anim: AnimatedSprite2D = $AnimatedSprite2D
 @onready var carry_sprite: Sprite2D = $CarrySprite
 @onready var carry_label: Label = $CarryLabel
+@onready var pickup_area: Area2D = get_node_or_null("PickupArea") as Area2D
 # AnimatedSprite2D 用于播放帧动画
 
+var item_type: String = ""
 var home_position: Vector2
 var target_position: Vector2
 var state: String = "idle"
@@ -93,6 +98,10 @@ var worker_nav_last_pos: Vector2 = Vector2.ZERO
 var worker_nav_stuck_timer: float = 0.0
 var worker_nav_detour_target: Vector2 = Vector2.ZERO
 var worker_nav_detour_active: bool = false
+var is_baby: bool = false
+var is_mutant: bool = false
+var mutate_timer: float = 0.0
+var pickup_item_enabled: bool = false
 var hit_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Dust_01.png"), "frames": 8},
 	{"texture": preload("res://Assets/FX/Particles/Dust_02.png"), "frames": 10}
@@ -100,7 +109,10 @@ var hit_fx_defs: Array[Dictionary] = [
 const WORKER_CARRY_TEXTURES: Dictionary = {
 	"wood": preload("res://Base_Object/Wood_Resource.png"),
 	"gold": preload("res://Base_Object/Gold_Resource.png"),
-	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png")
+	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png"),
+	"redwood": preload("res://Base_Object/Wood_Resource.png"),
+	"red_meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png"),
+	"rainbow_gold": preload("res://Base_Object/Gold_Resource.png")
 }
 # hit_fx_defs 用于受击时随机播放沙尘特效
 
@@ -111,9 +123,16 @@ func _ready() -> void:
 	home_position = global_position
 	_build_animations()
 	_enter_idle()
+	_apply_variant_visuals()
 	_update_carry_visual()
+	_enable_pickup_mode_if_needed()
 
 func _physics_process(delta: float) -> void:
+	if mutate_timer > 0.0:
+		mutate_timer -= delta
+		if mutate_timer <= 0.0:
+			mutate_timer = 0.0
+			set_mutant(true)
 	# 简单状态机：move 与 idle/grass 之间切换
 	if boost_timer > 0.0:
 		boost_timer -= delta
@@ -284,6 +303,20 @@ func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, fra
 func _die() -> void:
 	# 死亡后生成掉落物并销毁自己
 	died.emit(global_position)
+	if pickup_item_enabled:
+		queue_free()
+		return
+	var spawn_lamb = (not worker_mode) and (not is_mutant) and (is_baby or (lamb_drop_chance > 0.0 and randf() < lamb_drop_chance))
+	if spawn_lamb and lamb_entity_scene != null:
+		var lamb_instance = lamb_entity_scene.instantiate()
+		if lamb_instance != null:
+			if lamb_instance.has_method("setup_as_pickup_lamb"):
+				lamb_instance.call("setup_as_pickup_lamb")
+			if lamb_instance is Node2D:
+				(lamb_instance as Node2D).global_position = global_position + Vector2(randf_range(-10.0, 10.0), randf_range(-10.0, 10.0))
+			get_parent().call_deferred("add_child", lamb_instance)
+		queue_free()
+		return
 	if drop_item_scene:
 		var drop_count = randi_range(min_drop, max_drop)
 		for i in range(drop_count):
@@ -291,12 +324,80 @@ func _die() -> void:
 			if drop_instance:
 				get_parent().call_deferred("add_child", drop_instance)
 				if "item_type" in drop_instance:
-					drop_instance.item_type = drop_item_type
+					var final_drop_type = drop_item_type
+					drop_instance.item_type = final_drop_type
 				if drop_instance.has_method("_refresh_texture"):
 					drop_instance.call_deferred("_refresh_texture")
 				var offset = Vector2(randf_range(-10.0, 10.0), randf_range(-10.0, 10.0))
 				drop_instance.set_deferred("global_position", global_position + offset)
 	queue_free()
+
+func setup_as_pickup_lamb() -> void:
+	pickup_item_enabled = true
+	item_type = "lamb"
+	logistics_group = &"pickup_item"
+	logistics_enabled = false
+	worker_mode = false
+	is_baby = true
+	is_mutant = false
+	mutate_timer = 0.0
+	health = 1
+	drop_item_scene = null
+	drop_item_type = ""
+
+func configure_released_lamb(time_to_mutate_sec: float) -> void:
+	is_baby = true
+	is_mutant = false
+	mutate_timer = max(0.0, time_to_mutate_sec)
+	_apply_variant_visuals()
+
+func set_mutant(enabled: bool) -> void:
+	is_mutant = enabled
+	if is_mutant:
+		is_baby = false
+		mutate_timer = 0.0
+		drop_item_type = "red_meat"
+		health = max(health, 5)
+	_apply_variant_visuals()
+
+func _apply_variant_visuals() -> void:
+	if anim:
+		if pickup_item_enabled:
+			anim.modulate = Color(1.0, 0.35, 0.35, 1.0)
+		elif is_mutant:
+			anim.modulate = Color(1.0, 0.35, 0.35, 1.0)
+		else:
+			anim.modulate = Color(1, 1, 1, 1)
+	if is_baby and not is_mutant:
+		scale = Vector2(0.62, 0.62)
+	elif is_mutant:
+		scale = Vector2(1.0, 1.0)
+	else:
+		scale = Vector2(1.0, 1.0)
+
+func _enable_pickup_mode_if_needed() -> void:
+	if not pickup_item_enabled:
+		if pickup_area != null:
+			pickup_area.monitoring = false
+			pickup_area.monitorable = false
+		return
+	add_to_group(&"pickup_item")
+	if pickup_area != null:
+		pickup_area.monitoring = true
+		pickup_area.monitorable = true
+		pickup_area.collision_layer = 0
+		pickup_area.collision_mask = 1
+		if not pickup_area.body_entered.is_connected(_on_pickup_area_body_entered):
+			pickup_area.body_entered.connect(_on_pickup_area_body_entered)
+
+func _on_pickup_area_body_entered(body: Node2D) -> void:
+	if not pickup_item_enabled:
+		return
+	if body == null or not is_instance_valid(body):
+		return
+	if body.is_in_group(&"player") or body.is_in_group(&"peao"):
+		get_tree().call_group(&"interface", &"add_item", item_type, 1)
+		queue_free()
 
 func setup_roam(layer: TileMapLayer, cell: Vector2i, radius_cells: int) -> void:
 	# 设置基于瓦片坐标的漫游范围
@@ -476,7 +577,7 @@ func _find_nearest_resource_with_radius(radius: float) -> Node2D:
 			continue
 		if "drop_item_type" in obj:
 			var drop_type = obj.drop_item_type
-			if drop_type != "wood" and drop_type != "gold":
+			if drop_type != "wood" and drop_type != "redwood" and drop_type != "gold" and drop_type != "rainbow_gold":
 				continue
 		var d = global_position.distance_to(obj.global_position)
 		if d <= best_dist:
@@ -531,7 +632,7 @@ func _play_worker_harvest_anim(target: Node2D) -> void:
 		return
 	anim.flip_h = target.global_position.x < global_position.x
 	if target is ObjectBase:
-		if "drop_item_type" in target and target.drop_item_type == "gold":
+		if "drop_item_type" in target and (target.drop_item_type == "gold" or target.drop_item_type == "rainbow_gold"):
 			anim.play("work_pickaxe")
 		else:
 			anim.play("work_axe")
@@ -558,11 +659,19 @@ func _update_carry_visual() -> void:
 		return
 	if worker_carry_count <= 0 or worker_carry_item_type.is_empty():
 		carry_sprite.visible = false
+		carry_sprite.modulate = Color(1, 1, 1, 1)
 		if carry_label:
 			carry_label.visible = false
 		return
 	carry_sprite.visible = true
 	carry_sprite.texture = WORKER_CARRY_TEXTURES.get(worker_carry_item_type, WORKER_CARRY_TEXTURES["wood"])
+	if worker_carry_item_type == "redwood" or worker_carry_item_type == "red_meat":
+		carry_sprite.modulate = Color(1.0, 0.25, 0.25, 1.0)
+	elif worker_carry_item_type == "rainbow_gold":
+		var h = fmod(abs(float(get_instance_id())) * 0.000001, 1.0)
+		carry_sprite.modulate = Color.from_hsv(h, 0.75, 1.0, 1.0)
+	else:
+		carry_sprite.modulate = Color(1, 1, 1, 1)
 	if carry_label:
 		carry_label.visible = true
 		carry_label.text = str(worker_carry_count)

@@ -5,6 +5,9 @@
 [sub_resource type="CircleShape2D" id="CircleShape2D_8ybbn"]
 radius = 8.0
 
+[sub_resource type="CircleShape2D" id="CircleShape2D_lamb_pickup"]
+radius = 12.0
+
 [node name="Sheep" type="CharacterBody2D" unique_id=812816391]
 y_sort_enabled = true
 script = ExtResource("1_ewk04")
@@ -27,3 +30,12 @@ offset_bottom = -42.0
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=547708242]
 position = Vector2(0, 2)
 shape = SubResource("CircleShape2D_8ybbn")
+
+[node name="PickupArea" type="Area2D" parent="." unique_id=916479255]
+monitoring = false
+monitorable = false
+collision_layer = 0
+collision_mask = 0
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PickupArea" unique_id=359570114]
+shape = SubResource("CircleShape2D_lamb_pickup")

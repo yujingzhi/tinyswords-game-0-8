@@ -21,6 +21,7 @@
 [ext_resource type="Texture2D" uid="uid://4bsibpswdkdc" path="res://Assets/UI/Bars/SmallBar_Base.png" id="11_smallbar_base"]
 [ext_resource type="Texture2D" uid="uid://dfmcs4vv4joxs" path="res://Assets/UI/Bars/SmallBar_Fill.png" id="11_smallbar_fill"]
 [ext_resource type="Texture2D" uid="uid://br6if61mcsioe" path="res://Interface/Icons/Bag_Icon.png" id="13_eba0h"]
+[ext_resource type="Texture2D" path="res://Tiny Swords/Tiny Swords (Free Pack)/UI Elements/UI Elements/Icons/Icon_10.png" id="16_save_icon"]
 [ext_resource type="Texture2D" uid="uid://c65fi1y8nwn7k" path="res://Interface/Banners/Banner.png" id="14_5y088"]
 [ext_resource type="Script" uid="uid://c2y6hlp18831o" path="res://Interface/ScaleButton.gd" id="14_f381r"]
 [ext_resource type="AudioStream" uid="uid://cgr4uasp7rpn3" path="res://Audio/click_003.ogg" id="15_gweiw"]
@@ -458,6 +459,47 @@ label_settings = SubResource("LabelSettings_gweiw")
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="SaveButton" type="TextureButton" parent="Interface" unique_id=2114000001]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -132.0
+offset_right = 64.0
+grow_vertical = 0
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture_normal = ExtResource("16_save_icon")
+script = ExtResource("14_f381r")
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="Interface/SaveButton" unique_id=2114000002]
+stream = ExtResource("15_gweiw")
+volume_db = -5.0
+
+[node name="Label" type="Label" parent="Interface/SaveButton" unique_id=2114000003]
+layout_mode = 1
+anchor_right = 1.0
+offset_top = 66.0
+offset_right = 0.0
+offset_bottom = 90.0
+grow_vertical = 0
+theme_type_variation = &"GraphFrameTitleLabel"
+text = "存档"
+label_settings = SubResource("LabelSettings_gweiw")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ShortcutLabel" type="Label" parent="Interface/SaveButton" unique_id=2114000004]
+layout_mode = 1
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 30.0
+offset_bottom = 18.0
+theme_type_variation = &"GraphFrameTitleLabel"
+text = "F5"
+label_settings = SubResource("LabelSettings_gweiw")
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="QuickBar" type="HBoxContainer" parent="Interface" unique_id=2113774042]
 anchors_preset = 2
 anchor_top = 1.0
@@ -483,6 +525,10 @@ custom_minimum_size = Vector2(72, 72)
 layout_mode = 2
 
 [node name="QuickSlot4" parent="Interface/QuickBar" unique_id=2113774046 instance=ExtResource("7_o153u")]
+custom_minimum_size = Vector2(72, 72)
+layout_mode = 2
+
+[node name="QuickSlot5" parent="Interface/QuickBar" unique_id=2113774047 instance=ExtResource("7_o153u")]
 custom_minimum_size = Vector2(72, 72)
 layout_mode = 2
 
@@ -517,5 +563,6 @@ item_type = "gold"
 is_static_spawn = true
 
 [connection signal="pressed" from="Interface/BagButton" to="Interface" method="_on_bag_button_pressed"]
+[connection signal="pressed" from="Interface/SaveButton" to="Interface" method="_on_save_button_pressed"]
 
 [editable path="Terrain"]

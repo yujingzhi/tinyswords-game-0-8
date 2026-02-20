@@ -19,6 +19,8 @@ const ITEM_TEXTURES: Dictionary = {
 	# 未来扩展示范： "stone": preload("res://Base_Object/Stone.png")
 }
 # ITEM_TEXTURES 是“物品类型 -> 贴图”映射表
+var custom_item_modulate: Color = Color(1, 1, 1, 1)
+var has_custom_item_modulate: bool = false
 var pickup_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Dust_01.png"), "frames": 8},
 	{"texture": preload("res://Assets/FX/Particles/Dust_02.png"), "frames": 10},
@@ -34,6 +36,7 @@ var pickup_fx_defs: Array[Dictionary] = [
 
 @onready var audio_player: AudioStreamPlayer2D = $AudioPlayer
 @onready var sprite: Sprite2D = $Sprite2D
+@onready var text_label: Label = $TextLabel
 @onready var pickup_area: Area2D = $Area2D 
 # pickup_area 用于检测玩家接近
 
@@ -67,8 +70,47 @@ func _ready() -> void:
 func _refresh_texture() -> void:
 	# 根据 item_type 切换贴图
 	if is_instance_valid(sprite):
-		# 🌟 优化 2 配合：直接从字典取图。如果找不到对应的，默认给 wood (防错设计)
-		sprite.texture = ITEM_TEXTURES.get(item_type, ITEM_TEXTURES["wood"])
+		if item_type != "rainbow_gold":
+			has_custom_item_modulate = false
+			custom_item_modulate = Color(1, 1, 1, 1)
+		if item_type == "redwood_seed":
+			sprite.texture = null
+			sprite.modulate = Color(1, 1, 1, 1)
+			if text_label:
+				text_label.text = "红木种子"
+				text_label.modulate = Color(1.0, 0.35, 0.35, 1.0)
+				text_label.visible = true
+		elif item_type == "redwood":
+			sprite.texture = ITEM_TEXTURES.get("wood", null)
+			sprite.modulate = Color(1.0, 0.25, 0.25, 1.0)
+			if text_label:
+				text_label.visible = false
+		elif item_type == "red_meat":
+			sprite.texture = ITEM_TEXTURES.get("meat", null)
+			sprite.modulate = Color(1.0, 0.25, 0.25, 1.0)
+			if text_label:
+				text_label.visible = false
+		elif item_type == "rainbow_gold":
+			sprite.texture = ITEM_TEXTURES.get("gold", null)
+			if not has_custom_item_modulate:
+				has_custom_item_modulate = true
+				custom_item_modulate = Color.from_hsv(randf(), 0.75, 1.0, 1.0)
+			sprite.modulate = custom_item_modulate
+			if text_label:
+				text_label.visible = false
+		elif item_type == "lamb":
+			sprite.texture = null
+			sprite.modulate = Color(1, 1, 1, 1)
+			if text_label:
+				text_label.text = "羊仔"
+				text_label.modulate = Color(1.0, 1.0, 1.0, 1.0)
+				text_label.visible = true
+		else:
+			# 🌟 优化 2 配合：直接从字典取图。如果找不到对应的，默认给 wood (防错设计)
+			sprite.texture = ITEM_TEXTURES.get(item_type, ITEM_TEXTURES["wood"])
+			sprite.modulate = Color(1, 1, 1, 1)
+			if text_label:
+				text_label.visible = false
 
 func _on_pickup_area_body_entered(body: Node2D) -> void:
 	# 🌟 优化 5：使用 &"字符串" (StringName) 提升底层分组查询性能
@@ -117,10 +159,26 @@ func _animate_pickup_and_free(target: Node2D) -> void:
 func spawn_floating_text() -> void:
 	# 创建飘字提示 +1
 	var label: Label = Label.new()
-	label.text = "+1" 
+	if item_type == "redwood_seed":
+		label.text = "+红木种子"
+	elif item_type == "redwood":
+		label.text = "+红木+5"
+	elif item_type == "red_meat":
+		label.text = "+红肉+5"
+	elif item_type == "rainbow_gold":
+		label.text = "+彩矿+5"
+	elif item_type == "lamb":
+		label.text = "+羊仔"
+	else:
+		label.text = "+1"
 	var settings: LabelSettings = LabelSettings.new()
 	settings.font_size = 24                  
-	settings.font_color = Color(0.2, 1.0, 0.2) 
+	if item_type == "redwood_seed" or item_type == "redwood" or item_type == "red_meat":
+		settings.font_color = Color(1.0, 0.35, 0.35)
+	elif item_type == "rainbow_gold":
+		settings.font_color = Color(0.95, 0.85, 1.0)
+	else:
+		settings.font_color = Color(0.2, 1.0, 0.2) 
 	settings.outline_size = 6                
 	settings.outline_color = Color.BLACK      
 	label.label_settings = settings
