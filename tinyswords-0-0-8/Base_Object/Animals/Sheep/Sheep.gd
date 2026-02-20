@@ -91,6 +91,9 @@ var worker_scan_timer: float = 0.0
 var worker_carry_item_type: String = ""
 var worker_carry_count: int = 0
 var worker_storage_target: Node2D
+var worker_assigned_storage: Node2D
+var worker_exit_active: bool = false
+var worker_exit_target: Vector2 = Vector2.ZERO
 var worker_wander_timer: float = 0.0
 var worker_wander_target: Vector2 = Vector2.ZERO
 var worker_wander_active: bool = false
@@ -477,6 +480,8 @@ func _find_nearest_item() -> Node2D:
 			continue
 		if not is_instance_valid(item):
 			continue
+		if not _is_within_home_radius(item.global_position):
+			continue
 		var d = global_position.distance_to(item.global_position)
 		if d <= best_dist:
 			best_dist = d
@@ -502,9 +507,19 @@ func _update_worker(delta: float) -> void:
 	_update_carry_visual()
 	worker_scan_timer -= delta
 	worker_wander_timer -= delta
+	if worker_exit_active:
+		worker_wander_active = false
+		if _worker_move_to_position(worker_exit_target, 6.0):
+			worker_exit_active = false
+			worker_wander_timer = worker_wander_interval
+			_play_worker_idle()
+		return
 	if worker_carry_count > 0:
 		if worker_storage_target == null or not is_instance_valid(worker_storage_target):
-			worker_storage_target = _pick_nearest_storage()
+			if worker_assigned_storage != null and is_instance_valid(worker_assigned_storage):
+				worker_storage_target = worker_assigned_storage
+			else:
+				worker_storage_target = _pick_nearest_storage()
 		if worker_storage_target != null:
 			if _worker_move_to_position(worker_storage_target.global_position, worker_storage_range):
 				get_tree().call_group(&"interface", &"add_item", worker_carry_item_type, worker_carry_count)
@@ -578,7 +593,13 @@ func _find_nearest_resource_with_radius(radius: float) -> Node2D:
 		if "drop_item_type" in obj:
 			var drop_type = obj.drop_item_type
 			if drop_type != "wood" and drop_type != "redwood" and drop_type != "gold" and drop_type != "rainbow_gold":
-				continue
+				var allow = false
+				if "type" in obj:
+					var t = String(obj.type).to_lower()
+					if t == "rock":
+						allow = true
+				if not allow:
+					continue
 		if not _is_world_pos_on_land(obj.global_position):
 			continue
 		if not _is_within_home_radius(obj.global_position):
@@ -642,7 +663,14 @@ func _play_worker_harvest_anim(target: Node2D) -> void:
 		return
 	anim.flip_h = target.global_position.x < global_position.x
 	if target is ObjectBase:
+		var use_pickaxe = false
 		if "drop_item_type" in target and (target.drop_item_type == "gold" or target.drop_item_type == "rainbow_gold"):
+			use_pickaxe = true
+		elif "type" in target:
+			var t = String(target.type).to_lower()
+			if t == "rock" or t == "stone" or t == "ore":
+				use_pickaxe = true
+		if use_pickaxe:
 			anim.play("work_pickaxe")
 		else:
 			anim.play("work_axe")

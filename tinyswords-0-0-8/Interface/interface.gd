@@ -119,8 +119,9 @@ func _ready() -> void:
 	_build_exp_progress()
 	_build_build_buttons()
 	_build_end_overlay()
-	if save_button and not save_button.pressed.is_connected(_on_save_button_pressed):
-		save_button.pressed.connect(_on_save_button_pressed)
+	if save_button:
+		save_button.visible = false
+		save_button.disabled = true
 	call_deferred("_sync_player_health")
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -141,31 +142,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			DisplayServer.window_set_mode(next_mode)
 			get_viewport().set_input_as_handled()
 			return
-		if key_event_save.pressed and not key_event_save.echo and key_event_save.keycode == KEY_F5:
-			_toggle_save_popup()
-			get_viewport().set_input_as_handled()
-			return
-		if key_event_save.pressed and not key_event_save.echo and key_event_save.ctrl_pressed and key_event_save.keycode == KEY_S:
-			_on_save_overwrite_pressed()
-			get_viewport().set_input_as_handled()
-			return
-		if key_event_save.pressed and not key_event_save.echo and key_event_save.ctrl_pressed and key_event_save.keycode == KEY_L:
-			_on_save_load_pressed()
-			get_viewport().set_input_as_handled()
-			return
 	# 处理背包开关与快捷栏按键
 	if event.is_action_pressed("ui_cancel"):
-		if _is_save_popup_visible():
-			_hide_save_popup()
-			get_viewport().set_input_as_handled()
-			return
 		if inventory_panel and inventory_panel.visible and inventory_panel.modulate.a > 0.1:
 			_close_inventory_animation()
 		return
-	if _is_save_popup_visible():
-		if event.is_action_pressed("toggle_inventory") or event.is_action_pressed("quickbar_1") or event.is_action_pressed("quickbar_2") or event.is_action_pressed("quickbar_3") or event.is_action_pressed("quickbar_4") or event.is_action_pressed("quickbar_5"):
-			get_viewport().set_input_as_handled()
-			return
 	if event.is_action_pressed("toggle_inventory"):
 		_on_bag_button_pressed()
 	elif event.is_action_pressed("quickbar_1"):

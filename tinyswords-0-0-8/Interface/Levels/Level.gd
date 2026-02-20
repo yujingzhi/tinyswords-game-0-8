@@ -65,6 +65,7 @@ class_name Level
 @export var total_workers: int = 3
 @export var worker_spawn_radius: float = 120.0
 @export var worker_move_speed: float = 60.0
+@export var worker_exit_distance: float = 36.0
 @export var worker_empty_idle_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Idle.png")
 @export var worker_empty_run_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Run.png")
 @export var worker_idle_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Idle Wood.png")
@@ -155,7 +156,7 @@ class_name Level
 @export var entropy_wave_step: float = 10.0
 @export var entropy_wave_bonus_cap: int = 10
 @export var entropy_tree_respawn_delay_per_point: float = 0.02
-@export var save_enabled: bool = true
+var save_enabled: bool = false
 @export var save_auto_interval_sec: float = 20.0
 @export var save_slot: String = "默认存档"
 @export var redwood_enabled: bool = true
@@ -627,62 +628,6 @@ func _count_active_workers() -> int:
 			count += 1
 	return count
 
-func spawn_workers() -> void:
-	if worker_scene == null:
-		return
-	var existing_workers = _count_active_workers()
-	var cap = _get_worker_cap()
-	var to_spawn = cap - existing_workers
-	if to_spawn <= 0:
-		return
-	var player = _get_player()
-	if player == null and get_tree().get_nodes_in_group("storage").is_empty():
-		if worker_spawn_attempts < worker_spawn_attempts_max:
-			worker_spawn_attempts += 1
-			call_deferred("spawn_workers")
-		return
-	var warehouse_origins: Array[Vector2] = []
-	for node in get_tree().get_nodes_in_group("storage"):
-		if node == null or not is_instance_valid(node):
-			continue
-		if node.name == "GlobalStorage":
-			continue
-		if node is Node2D:
-			warehouse_origins.append((node as Node2D).global_position)
-	var spawn_origins: Array[Vector2] = []
-	var spawning_from_warehouse = false
-	if has_pending_worker_spawn_origin:
-		spawn_origins.append(pending_worker_spawn_origin)
-		spawning_from_warehouse = true
-	elif not warehouse_origins.is_empty():
-		spawn_origins = warehouse_origins
-		spawning_from_warehouse = true
-	elif player != null:
-		spawn_origins.append(player.global_position)
-	var spawned = 0
-	var tries = 0
-	while spawned < to_spawn and tries < to_spawn * 6:
-		tries += 1
-		var base_position = spawn_origins[spawned % spawn_origins.size()]
-		var radius = 18.0 if spawning_from_warehouse else worker_spawn_radius
-		var offset = Vector2(world_rng.randf_range(-radius, radius), world_rng.randf_range(-radius, radius))
-		var worker_instance = worker_scene.instantiate()
-		if worker_spawn_scatter and not spawning_from_warehouse and spawn_origins.size() == 1 and player != null and base_position == player.global_position:
-			worker_instance.global_position = _snap_position_to_land(_pick_worker_spawn_position(), base_position, max(radius, 24.0))
-		else:
-			worker_instance.global_position = _snap_position_to_land(base_position + offset, base_position, max(radius, 24.0))
-		_configure_worker_instance(worker_instance)
-		objects_container.add_child(worker_instance)
-		if "home_position" in worker_instance:
-			worker_instance.home_position = worker_instance.global_position
-		if "worker_wander_target" in worker_instance:
-			worker_instance.worker_wander_target = worker_instance.global_position
-		if "worker_wander_active" in worker_instance:
-			worker_instance.worker_wander_active = false
-		spawned += 1
-	if has_pending_worker_spawn_origin:
-		has_pending_worker_spawn_origin = false
-
 func _snap_position_to_land(desired_world_pos: Vector2, origin_world_pos: Vector2, search_radius: float) -> Vector2:
 	var desired_cell = _world_to_cell(desired_world_pos)
 	if _is_grass_cell(desired_cell) and not _is_water_cell(desired_cell):
@@ -869,7 +814,7 @@ func _update_meta_hud(delta: float) -> void:
 	var hint_text = _compute_hint_text(wood_count, gold_count)
 	if hovered_warehouse != null and is_instance_valid(hovered_warehouse) and not placing_warehouse:
 		hint_text = "提示: 点击仓库可移动位置"
-	var workers_current = get_tree().get_nodes_in_group(worker_group_name).size()
+	var workers_current = _count_active_workers()
 	var workers_cap = _get_worker_cap()
 	var next_cost = _get_next_warehouse_cost()
 	var cost_wood = int(next_cost.get("wood", 0))
@@ -1269,18 +1214,17 @@ func _place_warehouse_at_cell(cell: Vector2i) -> void:
 	ui.inventory_data["meat"] = meat_count - pending_warehouse_cost_meat
 	ui.refresh_inventory_ui()
 	var warehouse_pos = _cell_to_world(cell)
-	_spawn_warehouse_at_position(warehouse_pos)
-	has_pending_worker_spawn_origin = true
-	pending_worker_spawn_origin = warehouse_pos
+	var warehouse = _spawn_warehouse_at_position(warehouse_pos)
 	warehouse_count += 1
 	pending_warehouse_cost_wood = 0
 	pending_warehouse_cost_gold = 0
 	pending_warehouse_cost_meat = 0
-	spawn_workers()
+	if warehouse != null:
+		_dispatch_workers_from_warehouse(warehouse, workers_per_warehouse)
 
-func _spawn_warehouse_at_position(world_pos: Vector2) -> void:
+func _spawn_warehouse_at_position(world_pos: Vector2) -> Node2D:
 	if storage_texture == null:
-		return
+		return null
 	var node = Node2D.new()
 	node.name = "Warehouse"
 	node.add_to_group("storage")
@@ -1293,6 +1237,39 @@ func _spawn_warehouse_at_position(world_pos: Vector2) -> void:
 		objects_container.add_child(node)
 	else:
 		add_child(node)
+	return node
+
+func _dispatch_workers_from_warehouse(warehouse: Node2D, count: int) -> void:
+	if worker_scene == null or warehouse == null or not is_instance_valid(warehouse):
+		return
+	if objects_container == null:
+		return
+	var base_position = warehouse.global_position
+	for i in range(max(0, count)):
+		var worker_instance = worker_scene.instantiate()
+		if worker_instance == null or not (worker_instance is Node2D):
+			continue
+		var angle = world_rng.randf_range(0.0, TAU)
+		var dist = max(12.0, worker_exit_distance + world_rng.randf_range(-6.0, 6.0))
+		var candidate_exit = base_position + Vector2(cos(angle), sin(angle)) * dist
+		var exit_target = _snap_position_to_land(candidate_exit, base_position, max(16.0, worker_exit_distance * 2.0))
+		(worker_instance as Node2D).global_position = base_position
+		_configure_worker_instance(worker_instance)
+		objects_container.add_child(worker_instance)
+		if "home_position" in worker_instance:
+			worker_instance.home_position = base_position
+		if "worker_storage_target" in worker_instance:
+			worker_instance.worker_storage_target = warehouse
+		if "worker_assigned_storage" in worker_instance:
+			worker_instance.worker_assigned_storage = warehouse
+		if "worker_exit_active" in worker_instance:
+			worker_instance.worker_exit_active = true
+		if "worker_exit_target" in worker_instance:
+			worker_instance.worker_exit_target = exit_target
+		if "worker_wander_active" in worker_instance:
+			worker_instance.worker_wander_active = false
+		if "worker_wander_target" in worker_instance:
+			worker_instance.worker_wander_target = base_position
 
 func _ensure_warehouse_preview() -> void:
 	if warehouse_preview != null and is_instance_valid(warehouse_preview):
@@ -2437,7 +2414,6 @@ func _restore_workers_from_save(_d: Dictionary) -> void:
 		if "worker_mode" in w and w.worker_mode:
 			w.queue_free()
 	_apply_worker_speed_multiplier()
-	call_deferred("spawn_workers")
 
 func request_new_run() -> bool:
 	pending_boot_save_slot = ""
@@ -2446,7 +2422,6 @@ func request_new_run() -> bool:
 
 func _ensure_initial_warehouse_and_workers() -> void:
 	if warehouse_count > 0:
-		call_deferred("spawn_workers")
 		return
 	var player = _get_player()
 	if player == null:
@@ -2471,12 +2446,11 @@ func _ensure_initial_warehouse_and_workers() -> void:
 	var warehouse_pos = _cell_to_world(chosen_cell)
 	if not found:
 		warehouse_pos = _pick_land_position_near(player.global_position, 320.0, 200)
-	_spawn_warehouse_at_position(warehouse_pos)
+	var warehouse = _spawn_warehouse_at_position(warehouse_pos)
 	warehouse_count = 1
 	free_warehouse_tokens = 0
-	has_pending_worker_spawn_origin = true
-	pending_worker_spawn_origin = warehouse_pos
-	call_deferred("spawn_workers")
+	if warehouse != null:
+		_dispatch_workers_from_warehouse(warehouse, workers_per_warehouse)
 
 func _save_game() -> bool:
 	if not save_enabled:
