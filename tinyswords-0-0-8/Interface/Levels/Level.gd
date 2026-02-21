@@ -43,7 +43,7 @@ class_name Level
 @export var rock_cluster_size_max: int = 10
 @export var rock_cluster_expand_chance: float = 0.65
 @export var gold_ratio: float = 0.45
-@export var rainbow_gold_spawn_chance: float = 0.03
+@export var rainbow_gold_spawn_chance: float = 0.04
 @export var max_tree_count: int = 220
 @export var max_rock_count: int = 140
 @export var max_gold_count: int = 140
@@ -66,6 +66,13 @@ class_name Level
 @export var worker_spawn_radius: float = 120.0
 @export var worker_move_speed: float = 60.0
 @export var worker_exit_distance: float = 36.0
+@export var worker_spawn_safety_enabled: bool = true
+@export var worker_spawn_monitor_enabled: bool = true
+@export var worker_spawn_monitor_verbose: bool = false
+@export var worker_spawn_monitor_window_sec: float = 4.0
+@export var worker_spawn_max_allowed_distance: float = 1200.0
+@export var worker_spawn_max_exit_target_distance: float = 240.0
+@export var worker_spawn_oob_margin_pixels: float = 96.0
 @export var worker_empty_idle_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Idle.png")
 @export var worker_empty_run_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Run.png")
 @export var worker_idle_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Idle Wood.png")
@@ -114,8 +121,6 @@ class_name Level
 @export var energy_decay_per_sec: float = 0.5
 @export var wood_burn_interval: float = 2.0
 @export var wood_burn_per_tick: int = 1
-@export var gold_upgrade_cost: int = 6
-@export var logistics_speed_per_level: float = 0.12
 @export var meat_boost_duration: float = 8.0
 @export var meat_boost_multiplier: float = 2.0
 @export var threat_energy_step: float = 12.0
@@ -148,7 +153,7 @@ class_name Level
 @export var worker_spawn_scatter: bool = true
 @export var input_debug_enabled: bool = false
 @export var input_debug_toggle_key: Key = KEY_F9
-@export var victory_cpu_level: int = 8
+@export var victory_cpu_level: int = 0
 @export var victory_require_full_piles: bool = true
 @export var endless_mode: bool = true
 @export var entropy_enabled: bool = true
@@ -166,9 +171,9 @@ var save_enabled: bool = false
 @export var lamb_release_mutate_time_sec: float = 18.0
 @export var lamb_release_spawn_radius: float = 36.0
 @export var workers_per_warehouse: int = 3
-@export var warehouse_base_wood_cost: int = 30
+@export var warehouse_base_wood_cost: int = 10
 @export var warehouse_base_gold_cost: int = 10
-@export var warehouse_base_meat_cost: int = 5
+@export var warehouse_base_meat_cost: int = 2
 @export var warehouse_place_clear_radius: float = 38.0
 @export var exp_per_enemy_kill: int = 10
 @export var exp_per_tree_harvest: int = 2
@@ -177,7 +182,7 @@ var save_enabled: bool = false
 @export var exp_per_sheep_kill: int = 3
 @export var exp_base_to_next: int = 60
 @export var exp_growth: float = 1.35
-@export var exp_speed_per_level: float = 0.05
+@export var exp_speed_per_level: float = 0.0
 
 # --- 节点引用 ---
 # 注意：路径必须和你场景里的实际名字一致！
@@ -206,7 +211,6 @@ var gold_cells: Array[Vector2i] = []
 var deep_mountain_cells: Array[Vector2i] = []
 var world_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var energy_points: float = 0.0
-var cpu_level: int = 1
 var logistics_multiplier: float = 1.0
 var wood_burn_timer: float = 0.0
 var archer_wave_timer: float = 0.0
@@ -215,6 +219,8 @@ var pile_build_timer: float = 0.0
 var worker_spawn_attempts: int = 0
 var pending_worker_spawn_origin: Vector2 = Vector2.ZERO
 var has_pending_worker_spawn_origin: bool = false
+var worker_spawn_monitor: Dictionary = {}
+var worker_spawn_monitor_timer: float = 0.0
 var camera_dragging: bool = false
 var input_debug_visible: bool = false
 var input_debug_timer: float = 0.0
@@ -230,7 +236,6 @@ var game_ended: bool = false
 var game_won: bool = false
 var waves_survived: int = 0
 var enemy_kills: int = 0
-var enemy_kill_exp: int = 0
 var last_wave_spawned_count: int = 0
 var meta_hud_timer: float = 0.0
 var warehouse_count: int = 0
@@ -238,6 +243,7 @@ var placing_warehouse: bool = false
 var pending_warehouse_cost_wood: int = 0
 var pending_warehouse_cost_gold: int = 0
 var pending_warehouse_cost_meat: int = 0
+var pending_warehouse_cost_sp: int = 0
 var free_warehouse_tokens: int = 1
 var warehouse_preview: Node2D
 var pending_loaded_payload: Dictionary = {}
@@ -249,6 +255,22 @@ var moving_warehouse_original_z: int = 0
 var player_level: int = 1
 var player_exp: int = 0
 var exp_to_next: int = 0
+var skill_points: int = 0
+var skill_levels: Dictionary = {
+	"worker_speed": 0,
+	"carry": 0,
+	"sheep_mutation": 0,
+	"redwood_seed": 0,
+	"rainbow_gold": 0
+}
+const SKILL_WORKER_SPEED_MULTIPLIERS: Array[float] = [1.1, 1.2, 1.4, 1.6, 1.8, 2.0]
+const SKILL_CARRY_CAPACITIES: Array[int] = [2, 3, 4, 5, 6]
+const SKILL_CARRY_COSTS: Array[int] = [2, 4, 8, 16, 20]
+const SKILL_CHANCE_STEP: float = 0.02
+const SKILL_CHANCE_CAP: float = 0.20
+const SKILL_BASE_SHEEP_MUTATION_CHANCE: float = 0.02
+const SKILL_BASE_REDWOOD_SEED_CHANCE: float = 0.04
+const SKILL_BASE_RAINBOW_GOLD_CHANCE: float = 0.04
 var entropy: float = 0.0
 var save_timer: float = 0.0
 var placing_redwood_seed: bool = false
@@ -300,7 +322,7 @@ func _ready() -> void:
 	player_level = max(player_level, 1)
 	player_exp = max(player_exp, 0)
 	_recompute_exp_to_next()
-	_apply_worker_speed_multiplier()
+	_apply_all_skill_effects()
 	save_timer = max(1.0, save_auto_interval_sec)
 	if not pending_loaded_payload.is_empty():
 		_apply_loaded_payload(pending_loaded_payload)
@@ -413,6 +435,7 @@ func _input(event: InputEvent) -> void:
 				pending_warehouse_cost_wood = 0
 				pending_warehouse_cost_gold = 0
 				pending_warehouse_cost_meat = 0
+				pending_warehouse_cost_sp = 0
 				_clear_warehouse_preview()
 				get_viewport().set_input_as_handled()
 				return
@@ -615,12 +638,16 @@ func _configure_worker_instance(worker_instance: Node) -> void:
 		worker_instance.worker_work_frame_count = worker_work_frame_count
 	if "move_speed" in worker_instance:
 		worker_instance.move_speed = worker_move_speed
+	if "worker_carry_capacity" in worker_instance:
+		worker_instance.worker_carry_capacity = _get_current_worker_carry_capacity()
 	if "eat_chance" in worker_instance:
 		worker_instance.eat_chance = 0.0
 	if "drop_item_scene" in worker_instance:
 		worker_instance.drop_item_scene = null
 	if "health" in worker_instance:
 		worker_instance.health = 9999
+	if worker_instance.has_method("set_logistics_multiplier"):
+		worker_instance.call("set_logistics_multiplier", _get_total_worker_speed_multiplier())
 
 func _count_active_workers() -> int:
 	var count = 0
@@ -656,6 +683,112 @@ func _pick_land_position_near(origin_world_pos: Vector2, radius: float, max_atte
 			if _is_grass_cell(candidate_cell2) and not _is_water_cell(candidate_cell2):
 				return _cell_to_world(candidate_cell2)
 	return origin_world_pos
+
+func _is_worker_world_pos_out_of_bounds(world_pos: Vector2) -> bool:
+	var map_rect = _get_map_world_rect()
+	if map_rect.size.x <= 1.0 or map_rect.size.y <= 1.0:
+		return false
+	var margin = max(0.0, worker_spawn_oob_margin_pixels)
+	return not map_rect.grow(margin).has_point(world_pos)
+
+func _pick_worker_exit_target_near(base_position: Vector2) -> Vector2:
+	var best = base_position
+	var best_dist = INF
+	var attempts = 14
+	for i in range(attempts):
+		var angle = world_rng.randf_range(0.0, TAU)
+		var dist = max(12.0, worker_exit_distance + world_rng.randf_range(-6.0, 6.0))
+		var candidate_exit = base_position + Vector2(cos(angle), sin(angle)) * dist
+		var snapped = _snap_position_to_land(candidate_exit, base_position, max(16.0, worker_exit_distance * 2.0))
+		if worker_spawn_safety_enabled:
+			if _is_worker_world_pos_out_of_bounds(snapped):
+				continue
+			var d = snapped.distance_to(base_position)
+			if d > worker_spawn_max_exit_target_distance:
+				continue
+		var score = snapped.distance_to(candidate_exit)
+		if score < best_dist:
+			best_dist = score
+			best = snapped
+	return best
+
+func _register_worker_spawn(worker: Node, base_position: Vector2, warehouse: Node2D) -> void:
+	if not worker_spawn_monitor_enabled or worker == null or not is_instance_valid(worker):
+		return
+	var id = worker.get_instance_id()
+	worker_spawn_monitor[id] = {
+		"node": worker,
+		"home": base_position,
+		"warehouse": warehouse,
+		"t0": float(game_time_sec),
+		"fixes": 0
+	}
+
+func _reset_worker_to_home(worker: Node, home: Vector2, warehouse: Node2D) -> void:
+	if worker == null or not is_instance_valid(worker):
+		return
+	if worker is Node2D:
+		(worker as Node2D).global_position = home
+	if "velocity" in worker:
+		worker.velocity = Vector2.ZERO
+	if "home_position" in worker:
+		worker.home_position = home
+	if "worker_storage_target" in worker:
+		worker.worker_storage_target = warehouse
+	if "worker_assigned_storage" in worker:
+		worker.worker_assigned_storage = warehouse
+	if "worker_exit_target" in worker:
+		worker.worker_exit_target = _pick_worker_exit_target_near(home)
+	if "worker_exit_active" in worker:
+		worker.worker_exit_active = true
+	if "worker_wander_active" in worker:
+		worker.worker_wander_active = false
+	if "worker_wander_target" in worker:
+		worker.worker_wander_target = home
+
+func _update_worker_spawn_monitor(delta: float) -> void:
+	if not worker_spawn_monitor_enabled:
+		return
+	worker_spawn_monitor_timer -= delta
+	if worker_spawn_monitor_timer > 0.0:
+		return
+	worker_spawn_monitor_timer = 0.25
+	if worker_spawn_monitor.is_empty():
+		return
+	var ids = worker_spawn_monitor.keys()
+	for id in ids:
+		var entry = worker_spawn_monitor.get(id, null)
+		if entry == null or not (entry is Dictionary):
+			worker_spawn_monitor.erase(id)
+			continue
+		var worker = entry.get("node", null)
+		if worker == null or not is_instance_valid(worker):
+			worker_spawn_monitor.erase(id)
+			continue
+		var t0 = float(entry.get("t0", 0.0))
+		var age = float(game_time_sec) - t0
+		if age > max(0.1, worker_spawn_monitor_window_sec):
+			worker_spawn_monitor.erase(id)
+			continue
+		var home = entry.get("home", Vector2.ZERO)
+		var warehouse = entry.get("warehouse", null)
+		var pos = home
+		if worker is Node2D:
+			pos = (worker as Node2D).global_position
+		var fixes = int(entry.get("fixes", 0))
+		var too_far = pos.distance_to(home) > max(64.0, worker_spawn_max_allowed_distance)
+		var oob = _is_worker_world_pos_out_of_bounds(pos)
+		if (too_far or oob) and fixes < 2:
+			entry["fixes"] = fixes + 1
+			worker_spawn_monitor[id] = entry
+			_reset_worker_to_home(worker, home, warehouse)
+			if worker_spawn_monitor_verbose:
+				var why = "too_far" if too_far else "oob"
+				_emit_input_debug("worker_spawn_fix=" + why + " pos=" + str(pos) + " home=" + str(home))
+		elif (too_far or oob) and fixes >= 2:
+			worker_spawn_monitor.erase(id)
+			if worker_spawn_monitor_verbose:
+				_emit_input_debug("worker_spawn_giveup pos=" + str(pos) + " home=" + str(home))
 
 func _spawn_storage() -> void:
 	if storage_node != null and is_instance_valid(storage_node):
@@ -769,6 +902,7 @@ func _process(delta: float) -> void:
 	_update_warehouse_hover_and_preview()
 	_apply_edge_scroll(delta)
 	_clamp_view_to_map()
+	_update_worker_spawn_monitor(delta)
 	_update_input_debug(delta)
 	_update_tree_respawn(delta)
 	_update_rock_respawn(delta)
@@ -784,7 +918,6 @@ func _process(delta: float) -> void:
 	if wood_burn_timer <= 0.0:
 		wood_burn_timer = wood_burn_interval
 		_burn_wood_for_energy()
-		_try_upgrade_cpu()
 	pile_build_timer -= delta
 	if pile_build_timer <= 0.0:
 		pile_build_timer = pile_build_interval
@@ -828,12 +961,14 @@ func _update_meta_hud(delta: float) -> void:
 	var missing_wood = max(0, cost_wood - wood_count)
 	var missing_gold = max(0, cost_gold - gold_count)
 	var missing_meat = max(0, cost_meat - meat_count)
-	var can_build = missing_wood == 0 and missing_gold == 0 and missing_meat == 0
+	var cost_sp = int(next_cost.get("sp", 0))
+	var missing_sp = max(0, cost_sp - skill_points)
+	var can_build = missing_wood == 0 and missing_gold == 0 and missing_meat == 0 and missing_sp == 0
 	if ui.has_method("update_warehouse_build_button_state"):
-		ui.call("update_warehouse_build_button_state", can_build, cost_wood, cost_gold, cost_meat, missing_wood, missing_gold, missing_meat, placing_warehouse)
+		ui.call("update_warehouse_build_button_state", can_build, cost_wood, cost_gold, cost_meat, cost_sp, missing_wood, missing_gold, missing_meat, missing_sp, placing_warehouse)
 	if ui.has_method("update_player_experience"):
 		ui.call("update_player_experience", player_exp, exp_to_next, player_level)
-	ui.call("update_meta_hud", waves_survived, next_wave_in, enemies_alive, wave_size, energy_points, energy_decay_per_sec, energy_consumes_wood, cpu_level, enemy_kill_exp, max(1, gold_upgrade_cost), _get_total_worker_speed_multiplier(), logistics_enabled, int(noise_seed), objective_text, hint_text, player_level, player_exp, exp_to_next, warehouse_count, workers_current, workers_cap, cost_wood, cost_gold, cost_meat, placing_warehouse)
+	ui.call("update_meta_hud", waves_survived, next_wave_in, enemies_alive, wave_size, energy_points, energy_decay_per_sec, energy_consumes_wood, _get_total_worker_speed_multiplier(), logistics_enabled, int(noise_seed), objective_text, hint_text, player_level, player_exp, exp_to_next, skill_points, warehouse_count, workers_current, workers_cap, cost_wood, cost_gold, cost_meat, cost_sp, placing_warehouse)
 
 func _compute_next_wave_size() -> int:
 	if archer_wave_base <= 0:
@@ -853,8 +988,6 @@ func _compute_objective_text() -> String:
 	if endless_mode:
 		return "目标: 生存并扩张"
 	var parts: Array[String] = []
-	if victory_cpu_level > 0:
-		parts.append("CPU " + str(cpu_level) + "/" + str(victory_cpu_level))
 	if collection_pile_enabled and victory_require_full_piles and collection_pile_max > 0:
 		parts.append("收集桩 " + str(collection_piles.size()) + "/" + str(collection_pile_max))
 	if parts.is_empty():
@@ -862,16 +995,6 @@ func _compute_objective_text() -> String:
 	return "目标: " + " 或 ".join(parts)
 
 func _compute_hint_text(wood_count: int, gold_count: int) -> String:
-	if not endless_mode and victory_cpu_level > 0 and cpu_level < victory_cpu_level:
-		var need_levels = victory_cpu_level - cpu_level
-		var per = max(1, gold_upgrade_cost)
-		var total_need = need_levels * per
-		var remaining = max(0, total_need - enemy_kill_exp)
-		var per_kill = max(1, exp_per_enemy_kill)
-		var kills_need = int(ceil(float(remaining) / float(per_kill))) if remaining > 0 else 0
-		if remaining <= 0:
-			return "建议: 等待自动升级CPU（杀敌经验已足够）"
-		return "建议: 杀敌凑 " + str(remaining) + " 杀敌经验升级CPU（约需击杀 " + str(kills_need) + " 个敌人）"
 	if collection_pile_enabled and victory_require_full_piles and collection_pile_max > 0 and collection_piles.size() < collection_pile_max:
 		var need_energy = energy_points < collection_pile_energy_threshold
 		var need_wood = max(0, collection_pile_wood_cost - wood_count)
@@ -890,9 +1013,8 @@ func _check_end_conditions() -> void:
 			return
 	if endless_mode:
 		return
-	var win_by_cpu = victory_cpu_level > 0 and cpu_level >= victory_cpu_level
 	var win_by_piles = collection_pile_enabled and victory_require_full_piles and collection_piles.size() >= collection_pile_max and collection_pile_max > 0
-	if win_by_cpu or win_by_piles:
+	if win_by_piles:
 		_end_game(true, "victory")
 
 func _end_game(won: bool, reason: String) -> void:
@@ -911,8 +1033,9 @@ func _end_game(won: bool, reason: String) -> void:
 			"time_sec": game_time_sec,
 			"waves_survived": waves_survived,
 			"enemy_kills": enemy_kills,
-			"cpu_level": cpu_level,
-			"logistics_multiplier": logistics_multiplier,
+			"skill_points": skill_points,
+			"skill_levels": skill_levels,
+			"worker_speed_multiplier": _get_total_worker_speed_multiplier(),
 			"energy_points": energy_points,
 			"seed": int(noise_seed),
 			"resources": resources
@@ -924,7 +1047,6 @@ func register_enemy_kill(_enemy_type: String = "") -> void:
 	if game_ended:
 		return
 	enemy_kills += 1
-	enemy_kill_exp += max(0, exp_per_enemy_kill)
 	_add_experience(exp_per_enemy_kill)
 
 func _on_sheep_died(world_pos: Vector2, sheep: Node) -> void:
@@ -1052,7 +1174,8 @@ func _update_input_debug(delta: float) -> void:
 		"viewport=" + str(size),
 		"drag=" + str(camera_dragging),
 		"edge=" + str(edge_scroll_enabled),
-		"zoom_delta=" + str(last_zoom_delta)
+		"zoom_delta=" + str(last_zoom_delta),
+		"worker_monitor=" + str(worker_spawn_monitor.size())
 	]
 	if placing_warehouse:
 		var cell = _world_to_cell(get_global_mouse_position())
@@ -1090,21 +1213,6 @@ func _burn_wood_for_energy() -> void:
 	energy_points += float(burn_count * energy_per_wood)
 	ui.refresh_inventory_ui()
 
-func _try_upgrade_cpu() -> void:
-	var cost = max(1, gold_upgrade_cost)
-	if enemy_kill_exp < cost:
-		return
-	var upgrades = int(enemy_kill_exp / cost)
-	if upgrades <= 0:
-		return
-	enemy_kill_exp -= upgrades * cost
-	cpu_level += upgrades
-	logistics_multiplier = 1.0 + float(cpu_level - 1) * logistics_speed_per_level
-	_apply_worker_speed_multiplier()
-	var ui = _get_interface()
-	if ui != null and ui.has_method("refresh_inventory_ui"):
-		ui.refresh_inventory_ui()
-
 func request_build_warehouse() -> void:
 	if game_ended:
 		return
@@ -1115,10 +1223,11 @@ func request_build_warehouse() -> void:
 	var cost_wood = int(cost.get("wood", 0))
 	var cost_gold = int(cost.get("gold", 0))
 	var cost_meat = int(cost.get("meat", 0))
+	var cost_sp = int(cost.get("sp", 0))
 	var wood_count = int(ui.inventory_data.get("wood", 0))
 	var gold_count = int(ui.inventory_data.get("gold", 0))
 	var meat_count = int(ui.inventory_data.get("meat", 0))
-	if wood_count < cost_wood or gold_count < cost_gold or meat_count < cost_meat:
+	if wood_count < cost_wood or gold_count < cost_gold or meat_count < cost_meat or skill_points < cost_sp:
 		placing_warehouse = false
 		return
 	placing_warehouse = true
@@ -1126,6 +1235,7 @@ func request_build_warehouse() -> void:
 	pending_warehouse_cost_wood = cost_wood
 	pending_warehouse_cost_gold = cost_gold
 	pending_warehouse_cost_meat = cost_meat
+	pending_warehouse_cost_sp = cost_sp
 	_ensure_warehouse_preview()
 
 func _get_worker_cap() -> int:
@@ -1133,12 +1243,13 @@ func _get_worker_cap() -> int:
 
 func _get_next_warehouse_cost() -> Dictionary:
 	if free_warehouse_tokens > 0 and warehouse_count <= 0:
-		return {"wood": 0, "gold": 0, "meat": 0}
+		return {"wood": 0, "gold": 0, "meat": 0, "sp": 0}
 	var factor = 1 << max(0, warehouse_count - 1)
 	return {
 		"wood": warehouse_base_wood_cost * factor,
 		"gold": warehouse_base_gold_cost * factor,
-		"meat": warehouse_base_meat_cost * factor
+		"meat": warehouse_base_meat_cost * factor,
+		"sp": 1
 	}
 
 func _get_primary_map_layer() -> TileMapLayer:
@@ -1212,11 +1323,14 @@ func _place_warehouse_at_cell(cell: Vector2i) -> void:
 	var meat_count = int(ui.inventory_data.get("meat", 0))
 	if wood_count < pending_warehouse_cost_wood or gold_count < pending_warehouse_cost_gold or meat_count < pending_warehouse_cost_meat:
 		return
+	if skill_points < pending_warehouse_cost_sp:
+		return
 	if free_warehouse_tokens > 0 and warehouse_count <= 0 and pending_warehouse_cost_wood == 0 and pending_warehouse_cost_gold == 0 and pending_warehouse_cost_meat == 0:
 		free_warehouse_tokens -= 1
 	ui.inventory_data["wood"] = wood_count - pending_warehouse_cost_wood
 	ui.inventory_data["gold"] = gold_count - pending_warehouse_cost_gold
 	ui.inventory_data["meat"] = meat_count - pending_warehouse_cost_meat
+	skill_points -= pending_warehouse_cost_sp
 	ui.refresh_inventory_ui()
 	var warehouse_pos = _cell_to_world(cell)
 	var warehouse = _spawn_warehouse_at_position(warehouse_pos)
@@ -1224,6 +1338,7 @@ func _place_warehouse_at_cell(cell: Vector2i) -> void:
 	pending_warehouse_cost_wood = 0
 	pending_warehouse_cost_gold = 0
 	pending_warehouse_cost_meat = 0
+	pending_warehouse_cost_sp = 0
 	if warehouse != null:
 		_dispatch_workers_from_warehouse(warehouse, workers_per_warehouse)
 
@@ -1254,11 +1369,11 @@ func _dispatch_workers_from_warehouse(warehouse: Node2D, count: int) -> void:
 		var worker_instance = worker_scene.instantiate()
 		if worker_instance == null or not (worker_instance is Node2D):
 			continue
-		var angle = world_rng.randf_range(0.0, TAU)
-		var dist = max(12.0, worker_exit_distance + world_rng.randf_range(-6.0, 6.0))
-		var candidate_exit = base_position + Vector2(cos(angle), sin(angle)) * dist
-		var exit_target = _snap_position_to_land(candidate_exit, base_position, max(16.0, worker_exit_distance * 2.0))
-		(worker_instance as Node2D).global_position = base_position
+		var exit_target = _pick_worker_exit_target_near(base_position)
+		var spawn_pos = exit_target
+		if not _is_respawn_position_clear(spawn_pos):
+			spawn_pos = base_position
+		(worker_instance as Node2D).global_position = spawn_pos
 		_configure_worker_instance(worker_instance)
 		objects_container.add_child(worker_instance)
 		if "home_position" in worker_instance:
@@ -1268,13 +1383,14 @@ func _dispatch_workers_from_warehouse(warehouse: Node2D, count: int) -> void:
 		if "worker_assigned_storage" in worker_instance:
 			worker_instance.worker_assigned_storage = warehouse
 		if "worker_exit_active" in worker_instance:
-			worker_instance.worker_exit_active = true
+			worker_instance.worker_exit_active = false
 		if "worker_exit_target" in worker_instance:
 			worker_instance.worker_exit_target = exit_target
 		if "worker_wander_active" in worker_instance:
 			worker_instance.worker_wander_active = false
 		if "worker_wander_target" in worker_instance:
-			worker_instance.worker_wander_target = base_position
+			worker_instance.worker_wander_target = spawn_pos
+		_register_worker_spawn(worker_instance, base_position, warehouse)
 
 func _ensure_warehouse_preview() -> void:
 	if warehouse_preview != null and is_instance_valid(warehouse_preview):
@@ -1313,6 +1429,7 @@ func _cancel_warehouse_placement() -> void:
 	pending_warehouse_cost_wood = 0
 	pending_warehouse_cost_gold = 0
 	pending_warehouse_cost_meat = 0
+	pending_warehouse_cost_sp = 0
 	_clear_warehouse_preview()
 
 func request_plant_redwood_seed() -> void:
@@ -1357,7 +1474,7 @@ func request_release_lamb() -> void:
 		(lamb_instance as Node2D).global_position = spawn_pos
 	objects_container.add_child(lamb_instance)
 	if lamb_instance.has_method("configure_released_lamb"):
-		lamb_instance.call("configure_released_lamb", lamb_release_mutate_time_sec)
+		lamb_instance.call("configure_released_lamb", lamb_release_mutate_time_sec, _get_sheep_mutation_chance())
 	if lamb_instance.has_signal("died"):
 		if not lamb_instance.died.is_connected(_on_sheep_died.bind(lamb_instance)):
 			lamb_instance.died.connect(_on_sheep_died.bind(lamb_instance))
@@ -1569,15 +1686,104 @@ func _add_experience(amount: int) -> void:
 	while player_exp >= exp_to_next:
 		player_exp -= exp_to_next
 		player_level += 1
+		skill_points += 1
 		_recompute_exp_to_next()
-	_apply_worker_speed_multiplier()
+	_apply_all_skill_effects()
 
 func _get_total_worker_speed_multiplier() -> float:
-	var exp_mult = 1.0 + float(max(0, player_level - 1)) * exp_speed_per_level
-	return max(0.1, logistics_multiplier * exp_mult)
+	var level = max(0, int(skill_levels.get("worker_speed", 0)))
+	if level <= 0:
+		return 1.0
+	var idx = clamp(level - 1, 0, SKILL_WORKER_SPEED_MULTIPLIERS.size() - 1)
+	return max(0.1, float(SKILL_WORKER_SPEED_MULTIPLIERS[idx]))
 
 func _apply_worker_speed_multiplier() -> void:
 	get_tree().call_group(worker_group_name, "set_logistics_multiplier", _get_total_worker_speed_multiplier())
+
+func _get_current_worker_carry_capacity() -> int:
+	var level = max(0, int(skill_levels.get("carry", 0)))
+	if level <= 0:
+		return 1
+	var idx = clamp(level - 1, 0, SKILL_CARRY_CAPACITIES.size() - 1)
+	return max(1, int(SKILL_CARRY_CAPACITIES[idx]))
+
+func _apply_worker_carry_capacity() -> void:
+	var cap = _get_current_worker_carry_capacity()
+	get_tree().call_group(worker_group_name, "set_worker_carry_capacity", cap)
+
+func _get_sheep_mutation_chance() -> float:
+	var level = max(0, int(skill_levels.get("sheep_mutation", 0)))
+	return min(SKILL_CHANCE_CAP, SKILL_BASE_SHEEP_MUTATION_CHANCE + float(level) * SKILL_CHANCE_STEP)
+
+func _get_redwood_seed_chance() -> float:
+	var level = max(0, int(skill_levels.get("redwood_seed", 0)))
+	return min(SKILL_CHANCE_CAP, SKILL_BASE_REDWOOD_SEED_CHANCE + float(level) * SKILL_CHANCE_STEP)
+
+func _get_rainbow_gold_chance() -> float:
+	var level = max(0, int(skill_levels.get("rainbow_gold", 0)))
+	return min(SKILL_CHANCE_CAP, SKILL_BASE_RAINBOW_GOLD_CHANCE + float(level) * SKILL_CHANCE_STEP)
+
+func _apply_object_drop_settings(obj_instance: Node) -> void:
+	if obj_instance == null:
+		return
+	if "redwood_seed_drop_chance" in obj_instance:
+		obj_instance.redwood_seed_drop_chance = _get_redwood_seed_chance()
+
+func _apply_all_skill_effects() -> void:
+	_apply_worker_speed_multiplier()
+	_apply_worker_carry_capacity()
+	var obstacles = get_tree().get_nodes_in_group("obstacle")
+	for obj in obstacles:
+		if obj == null or not is_instance_valid(obj):
+			continue
+		_apply_object_drop_settings(obj)
+
+func get_skill_points() -> int:
+	return max(0, skill_points)
+
+func get_skill_levels() -> Dictionary:
+	return skill_levels.duplicate(true)
+
+func try_buy_skill(skill_key: String) -> bool:
+	var key = skill_key.strip_edges()
+	if key.is_empty():
+		return false
+	var current = max(0, int(skill_levels.get(key, 0)))
+	var cost = 0
+	var next = current
+	if key == "worker_speed":
+		if current >= SKILL_WORKER_SPEED_MULTIPLIERS.size():
+			return false
+		cost = 1
+		next = current + 1
+	elif key == "carry":
+		if current >= SKILL_CARRY_CAPACITIES.size():
+			return false
+		cost = int(SKILL_CARRY_COSTS[clamp(current, 0, SKILL_CARRY_COSTS.size() - 1)])
+		next = current + 1
+	elif key == "sheep_mutation":
+		if _get_sheep_mutation_chance() >= SKILL_CHANCE_CAP:
+			return false
+		cost = 1
+		next = current + 1
+	elif key == "redwood_seed":
+		if _get_redwood_seed_chance() >= SKILL_CHANCE_CAP:
+			return false
+		cost = 1
+		next = current + 1
+	elif key == "rainbow_gold":
+		if _get_rainbow_gold_chance() >= SKILL_CHANCE_CAP:
+			return false
+		cost = 1
+		next = current + 1
+	else:
+		return false
+	if skill_points < cost:
+		return false
+	skill_points -= cost
+	skill_levels[key] = next
+	_apply_all_skill_effects()
+	return true
 
 func _spawn_threat_wave() -> bool:
 	if archer_scene == null:
@@ -1933,6 +2139,7 @@ func _spawn_object_at_cell(scenes: Array[PackedScene], cell: Vector2i, occupied:
 	var obj_instance = scene.instantiate()
 	obj_instance.position = _cell_to_world(cell)
 	objects_container.add_child(obj_instance)
+	_apply_object_drop_settings(obj_instance)
 	_maybe_make_rainbow_gold(obj_instance)
 	_register_spawned_object(obj_instance)
 	_mark_occupied(cell, occupied)
@@ -1944,9 +2151,10 @@ func _maybe_make_rainbow_gold(obj_instance: Node) -> void:
 		return
 	if str(obj_instance.drop_item_type) != "gold":
 		return
-	if rainbow_gold_spawn_chance <= 0.0:
+	var chance = _get_rainbow_gold_chance()
+	if chance <= 0.0:
 		return
-	if world_rng.randf() >= rainbow_gold_spawn_chance:
+	if world_rng.randf() >= chance:
 		return
 	obj_instance.drop_item_type = "rainbow_gold"
 	var sprite = obj_instance.get_node_or_null("Sprite2D") as Sprite2D
@@ -2284,16 +2492,18 @@ func _read_save_payload(slot: String) -> Dictionary:
 	return data as Dictionary
 
 func _apply_loaded_payload(d: Dictionary) -> void:
-	if d.has("cpu_level"):
-		cpu_level = max(1, int(d["cpu_level"]))
-	if d.has("enemy_kill_exp"):
-		enemy_kill_exp = max(0, int(d["enemy_kill_exp"]))
 	if d.has("waves_survived"):
 		waves_survived = max(0, int(d["waves_survived"]))
 	if d.has("player_level"):
 		player_level = max(1, int(d["player_level"]))
 	if d.has("player_exp"):
 		player_exp = max(0, int(d["player_exp"]))
+	if d.has("skill_points"):
+		skill_points = max(0, int(d["skill_points"]))
+	if d.has("skill_levels") and typeof(d["skill_levels"]) == TYPE_DICTIONARY:
+		var loaded := d["skill_levels"] as Dictionary
+		for k in skill_levels.keys():
+			skill_levels[k] = max(0, int(loaded.get(k, 0)))
 	if d.has("entropy"):
 		entropy = max(0.0, float(d["entropy"]))
 	if d.has("energy_points"):
@@ -2310,9 +2520,8 @@ func _apply_loaded_payload(d: Dictionary) -> void:
 		enemy_kills = max(0, int(d["enemy_kills"]))
 	if d.has("free_warehouse_tokens"):
 		free_warehouse_tokens = max(0, int(d["free_warehouse_tokens"]))
-	logistics_multiplier = 1.0 + float(cpu_level - 1) * logistics_speed_per_level
-	_apply_worker_speed_multiplier()
 	_recompute_exp_to_next()
+	_apply_all_skill_effects()
 	var ui = _get_interface()
 	if ui != null:
 		if "inventory_data" in ui and d.has("inventory_data") and typeof(d["inventory_data"]) == TYPE_DICTIONARY:
@@ -2418,7 +2627,7 @@ func _restore_workers_from_save(_d: Dictionary) -> void:
 			continue
 		if "worker_mode" in w and w.worker_mode:
 			w.queue_free()
-	_apply_worker_speed_multiplier()
+	_apply_all_skill_effects()
 
 func request_new_run() -> bool:
 	pending_boot_save_slot = ""
@@ -2464,14 +2673,14 @@ func _save_game() -> bool:
 	if ui == null:
 		return false
 	var payload: Dictionary = {
-		"version": 3,
+		"version": 4,
 		"saved_at_unix": Time.get_unix_time_from_system(),
 		"noise_seed": int(noise_seed),
-		"cpu_level": int(cpu_level),
-		"enemy_kill_exp": int(enemy_kill_exp),
 		"waves_survived": int(waves_survived),
 		"player_level": int(player_level),
 		"player_exp": int(player_exp),
+		"skill_points": int(skill_points),
+		"skill_levels": skill_levels,
 		"entropy": float(entropy),
 		"energy_points": float(energy_points),
 		"archer_wave_timer": float(archer_wave_timer),

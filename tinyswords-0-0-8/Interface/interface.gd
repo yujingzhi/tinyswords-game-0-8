@@ -14,7 +14,7 @@ class_name Interface # 注册大管家
 @onready var gold_label: Label = $ResourceHUD/GoldLabel
 @onready var meat_label: Label = $ResourceHUD/MeatLabel
 @onready var save_button: TextureButton = $TopBar/SaveButton
-@onready var skill_tree_ui: Control = $SkillTreeUI
+@onready var tech_ui: Control = $SkillTreeUI
 
 var meta_hud_panel: PanelContainer
 var meta_hud_container: VBoxContainer
@@ -228,7 +228,7 @@ func _update_resource_hud() -> void:
 	if meat_label:
 		meat_label.text = "肉 " + str(inventory_data.get("meat", 0))
 
-func update_meta_hud(waves_survived: int, next_wave_in: float, enemies_alive: int, _next_wave_size: int, energy_points: float, energy_decay_per_sec: float, _energy_consumes_wood: bool, _cpu_level: int, _enemy_kill_exp: int, _cpu_upgrade_cost: int, logistics_multiplier: float, logistics_enabled: bool, _map_seed: int, objective_text: String, hint_text: String, player_level: int, player_exp: int, exp_to_next: int, warehouse_count: int, workers_current: int, workers_cap: int, next_warehouse_wood: int, next_warehouse_gold: int, next_warehouse_meat: int, placing_warehouse: bool) -> void:
+func update_meta_hud(waves_survived: int, next_wave_in: float, enemies_alive: int, _next_wave_size: int, energy_points: float, energy_decay_per_sec: float, _energy_consumes_wood: bool, worker_speed_multiplier: float, logistics_enabled: bool, _map_seed: int, objective_text: String, hint_text: String, player_level: int, player_exp: int, exp_to_next: int, skill_points: int, warehouse_count: int, workers_current: int, workers_cap: int, next_warehouse_wood: int, next_warehouse_gold: int, next_warehouse_meat: int, next_warehouse_sp: int, placing_warehouse: bool) -> void:
 	if meta_hud_container == null:
 		return
 	if wave_meta_label:
@@ -236,14 +236,16 @@ func update_meta_hud(waves_survived: int, next_wave_in: float, enemies_alive: in
 	if energy_meta_label:
 		energy_meta_label.text = "能量 " + str(int(round(energy_points))) + "  (-" + str(snapped(energy_decay_per_sec, 0.1)) + "/s)"
 	if cpu_meta_label:
-		cpu_meta_label.text = "物流 " + ("在线" if logistics_enabled else "离线") + "  ·  加成 x" + str(snapped(logistics_multiplier, 0.01))
+		cpu_meta_label.text = "物流 " + ("在线" if logistics_enabled else "离线") + "  ·  工人速度 x" + str(snapped(worker_speed_multiplier, 0.01))
 	if logistics_meta_label:
 		var place_text = "  ·  摆放中" if placing_warehouse else ""
 		logistics_meta_label.text = "仓库 " + str(warehouse_count) + "  ·  工人 " + str(workers_current) + "/" + str(workers_cap) + place_text
 	if exp_meta_label:
-		exp_meta_label.text = "Lv." + str(player_level) + "  ·  经验 " + str(player_exp) + "/" + str(exp_to_next)
+		exp_meta_label.text = "Lv." + str(player_level) + "  ·  经验 " + str(player_exp) + "/" + str(exp_to_next) + "  ·  SP " + str(max(0, skill_points))
 	if warehouse_meta_label:
-		warehouse_meta_label.text = "建造仓库: 木" + str(next_warehouse_wood) + "  矿" + str(next_warehouse_gold) + "  肉" + str(next_warehouse_meat)
+		warehouse_meta_label.text = "建造仓库: 木" + str(next_warehouse_wood) + "  矿" + str(next_warehouse_gold) + "  肉" + str(next_warehouse_meat) + "  SP " + str(max(0, next_warehouse_sp))
+	if tech_ui != null and is_instance_valid(tech_ui) and tech_ui.has_method("set_skill_points"):
+		tech_ui.call("set_skill_points", max(0, skill_points))
 	if objective_meta_label:
 		var t = _strip_hud_prefix(objective_text, "目标:")
 		t = _strip_hud_prefix(t, "目标：")
@@ -265,7 +267,8 @@ func show_end_screen(won: bool, stats: Dictionary) -> void:
 		var time_sec = float(stats.get("time_sec", 0.0))
 		var waves = int(stats.get("waves_survived", 0))
 		var kills = int(stats.get("enemy_kills", 0))
-		var cpu_level_val = int(stats.get("cpu_level", 1))
+		var sp = int(stats.get("skill_points", 0))
+		var worker_speed = float(stats.get("worker_speed_multiplier", 1.0))
 		var map_seed = int(stats.get("seed", 0))
 		var resources = stats.get("resources", {})
 		var wood = 0
@@ -275,7 +278,7 @@ func show_end_screen(won: bool, stats: Dictionary) -> void:
 			wood = int(resources.get("wood", 0))
 			gold = int(resources.get("gold", 0))
 			meat = int(resources.get("meat", 0))
-		end_stats_label.text = "坚持波数: " + str(waves) + "\n击杀敌人: " + str(kills) + "\nCPU: Lv." + str(cpu_level_val) + "\n用时: " + _format_time(time_sec) + "\n地图种子: " + str(map_seed) + "\n资源: 木 " + str(wood) + " | 矿 " + str(gold) + " | 肉 " + str(meat) + "\n\nR 重开 | Q/ESC 退出"
+		end_stats_label.text = "坚持波数: " + str(waves) + "\n击杀敌人: " + str(kills) + "\nSP: " + str(sp) + "  |  工人速度 x" + str(snapped(worker_speed, 0.01)) + "\n用时: " + _format_time(time_sec) + "\n地图种子: " + str(map_seed) + "\n资源: 木 " + str(wood) + " | 矿 " + str(gold) + " | 肉 " + str(meat) + "\n\nR 重开 | Q/ESC 退出"
 	end_overlay.visible = true
 
 func _build_meta_hud() -> void:
@@ -319,10 +322,10 @@ func _build_meta_hud() -> void:
 	hint_meta_label = Label.new()
 	wave_meta_label.text = "第0波  ·  下波 0s  ·  敌人 0"
 	energy_meta_label.text = "能量 0  (-0/s)"
-	cpu_meta_label.text = "物流 离线  ·  加成 x1"
+	cpu_meta_label.text = "物流 离线  ·  工人速度 x1"
 	logistics_meta_label.text = "仓库 0  ·  工人 0/0"
-	exp_meta_label.text = "Lv.1  ·  经验 0/0"
-	warehouse_meta_label.text = "建造仓库: 木0  矿0  肉0"
+	exp_meta_label.text = "Lv.1  ·  经验 0/0  ·  SP 0"
+	warehouse_meta_label.text = "建造仓库: 木0  矿0  肉0  SP 0"
 	objective_meta_label.text = "任务 "
 	hint_meta_label.text = "提示 "
 	wave_meta_label.label_settings = hud_settings
@@ -905,11 +908,11 @@ func _build_build_buttons() -> void:
 func _on_build_warehouse_pressed() -> void:
 	get_tree().call_group("level", "request_build_warehouse")
 
-func update_warehouse_build_button_state(can_build: bool, cost_wood: int, cost_gold: int, cost_meat: int, missing_wood: int, missing_gold: int, missing_meat: int, placing: bool) -> void:
+func update_warehouse_build_button_state(can_build: bool, cost_wood: int, cost_gold: int, cost_meat: int, cost_sp: int, missing_wood: int, missing_gold: int, missing_meat: int, missing_sp: int, placing: bool) -> void:
 	if build_warehouse_button == null:
 		return
-	var missing_text = "缺少: 木" + str(missing_wood) + " 矿" + str(missing_gold) + " 肉" + str(missing_meat)
-	var cost_text = "成本: 木" + str(cost_wood) + " 矿" + str(cost_gold) + " 肉" + str(cost_meat)
+	var missing_text = "缺少: 木" + str(missing_wood) + " 矿" + str(missing_gold) + " 肉" + str(missing_meat) + " SP" + str(missing_sp)
+	var cost_text = "成本: 木" + str(cost_wood) + " 矿" + str(cost_gold) + " 肉" + str(cost_meat) + " SP" + str(cost_sp)
 	if placing:
 		build_warehouse_button.tooltip_text = "左键放置，右键取消\n" + cost_text
 	else:
@@ -1113,9 +1116,9 @@ func _on_bag_button_pressed() -> void:
 func _on_save_button_pressed() -> void:
 	_toggle_save_popup()
 
-func _on_skill_button_pressed() -> void:
-	if skill_tree_ui != null and is_instance_valid(skill_tree_ui) and skill_tree_ui.has_method("toggle"):
-		skill_tree_ui.call("toggle")
+func _on_tech_button_pressed() -> void:
+	if tech_ui != null and is_instance_valid(tech_ui) and tech_ui.has_method("toggle"):
+		tech_ui.call("toggle")
 
 func _open_inventory_animation():
 	# 打开背包的弹出动画

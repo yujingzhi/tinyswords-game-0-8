@@ -608,6 +608,6 @@ is_static_spawn = true
 
 [connection signal="pressed" from="Interface/TopBar/BagButton" to="Interface" method="_on_bag_button_pressed"]
 [connection signal="pressed" from="Interface/TopBar/SaveButton" to="Interface" method="_on_save_button_pressed"]
-[connection signal="pressed" from="Interface/TopBar/SkillButton" to="Interface" method="_on_skill_button_pressed"]
+[connection signal="pressed" from="Interface/TopBar/SkillButton" to="Interface" method="_on_tech_button_pressed"]
 
 [editable path="Terrain"]

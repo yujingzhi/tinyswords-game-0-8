@@ -104,6 +104,7 @@ var worker_nav_detour_active: bool = false
 var is_baby: bool = false
 var is_mutant: bool = false
 var mutate_timer: float = 0.0
+var released_mutation_chance: float = 0.0
 var pickup_item_enabled: bool = false
 var hit_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Dust_01.png"), "frames": 8},
@@ -139,7 +140,12 @@ func _physics_process(delta: float) -> void:
 		mutate_timer -= delta
 		if mutate_timer <= 0.0:
 			mutate_timer = 0.0
-			set_mutant(true)
+			var should_mutate = released_mutation_chance > 0.0 and randf() < released_mutation_chance
+			if should_mutate:
+				set_mutant(true)
+			else:
+				is_baby = false
+				_apply_variant_visuals()
 	# 简单状态机：move 与 idle/grass 之间切换
 	if boost_timer > 0.0:
 		boost_timer -= delta
@@ -189,10 +195,10 @@ func take_damage(amount: int) -> void:
 func receive_pickup(pickup_type: String) -> bool:
 	if not worker_mode:
 		return false
-	if worker_carry_count > 0:
+	if worker_carry_count > 0 and worker_carry_item_type != pickup_type:
 		return false
 	worker_carry_item_type = pickup_type
-	worker_carry_count = min(worker_carry_capacity, 1)
+	worker_carry_count = min(worker_carry_capacity, worker_carry_count + 1)
 	worker_target_item = null
 	_update_carry_visual()
 	return true
@@ -352,10 +358,11 @@ func setup_as_pickup_lamb() -> void:
 	drop_item_scene = null
 	drop_item_type = ""
 
-func configure_released_lamb(time_to_mutate_sec: float) -> void:
+func configure_released_lamb(time_to_mutate_sec: float, mutation_chance: float = 0.0) -> void:
 	is_baby = true
 	is_mutant = false
 	mutate_timer = max(0.0, time_to_mutate_sec)
+	released_mutation_chance = clamp(mutation_chance, 0.0, 1.0)
 	_apply_variant_visuals()
 
 func set_mutant(enabled: bool) -> void:
@@ -428,6 +435,12 @@ func apply_speed_boost(multiplier: float, duration: float) -> void:
 
 func set_logistics_multiplier(multiplier: float) -> void:
 	logistics_multiplier = max(0.1, multiplier)
+
+func set_worker_carry_capacity(capacity: int) -> void:
+	worker_carry_capacity = max(1, capacity)
+	if worker_carry_count > worker_carry_capacity:
+		worker_carry_count = worker_carry_capacity
+	_update_carry_visual()
 
 func set_logistics_enabled(enabled: bool) -> void:
 	logistics_enabled = enabled
@@ -561,9 +574,13 @@ func _update_worker(delta: float) -> void:
 		worker_wander_active = false
 		if _worker_move_to_position(worker_target_item.global_position, worker_pickup_range):
 			if "item_type" in worker_target_item:
-				worker_carry_item_type = worker_target_item.item_type
+				worker_carry_item_type = String(worker_target_item.item_type)
 				worker_carry_count = min(worker_carry_capacity, 1)
+				worker_target_item.queue_free()
+				worker_target_item = null
+				_collect_nearby_pickups(worker_carry_item_type)
 				_update_carry_visual()
+				return
 			worker_target_item.queue_free()
 			worker_target_item = null
 		return
@@ -647,6 +664,28 @@ func _find_nearest_pickup() -> Node2D:
 			nearest = item
 	return nearest
 
+func _collect_nearby_pickups(pickup_type: String) -> void:
+	if pickup_type.is_empty():
+		return
+	if worker_carry_count >= worker_carry_capacity:
+		return
+	var items = get_tree().get_nodes_in_group(&"pickup_item")
+	for item in items:
+		if worker_carry_count >= worker_carry_capacity:
+			return
+		if not (item is Node2D):
+			continue
+		if not is_instance_valid(item):
+			continue
+		if not ("item_type" in item):
+			continue
+		if String(item.item_type) != pickup_type:
+			continue
+		if global_position.distance_to((item as Node2D).global_position) > worker_pickup_range:
+			continue
+		worker_carry_count += 1
+		item.queue_free()
+
 func _pick_nearest_storage() -> Node2D:
 	var stores = get_tree().get_nodes_in_group(&"storage")
 	var nearest: Node2D = null
@@ -715,8 +754,11 @@ func _update_carry_visual() -> void:
 	else:
 		carry_sprite.modulate = Color(1, 1, 1, 1)
 	if carry_label:
-		carry_label.visible = true
-		carry_label.text = str(worker_carry_count)
+		if worker_carry_count > 1:
+			carry_label.visible = true
+			carry_label.text = "+" + str(worker_carry_count)
+		else:
+			carry_label.visible = false
 
 func _is_path_blocked(from_pos: Vector2, to_pos: Vector2) -> bool:
 	var space_state = get_world_2d().direct_space_state
