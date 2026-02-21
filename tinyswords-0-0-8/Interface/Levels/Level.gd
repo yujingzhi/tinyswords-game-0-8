@@ -256,6 +256,9 @@ var player_level: int = 1
 var player_exp: int = 0
 var exp_to_next: int = 0
 var skill_points: int = 0
+@export var player_ground_check_interval: float = 0.8
+@export var player_ground_check_radius: float = 320.0
+var player_ground_check_timer: float = 0.0
 var skill_levels: Dictionary = {
 	"worker_speed": 0,
 	"carry": 0,
@@ -902,6 +905,7 @@ func _process(delta: float) -> void:
 	_update_warehouse_hover_and_preview()
 	_apply_edge_scroll(delta)
 	_clamp_view_to_map()
+	_update_player_ground_check(delta)
 	_update_worker_spawn_monitor(delta)
 	_update_input_debug(delta)
 	_update_tree_respawn(delta)
@@ -1154,6 +1158,21 @@ func _clamp_view_to_map() -> void:
 	_clamp_player_to_map(map_rect)
 	_clamp_camera_to_map(map_rect)
 
+func _update_player_ground_check(delta: float) -> void:
+	player_ground_check_timer -= delta
+	if player_ground_check_timer > 0.0:
+		return
+	player_ground_check_timer = max(0.1, player_ground_check_interval)
+	var player = _get_player()
+	if player == null or not (player is Node2D):
+		return
+	var player_node := player as Node2D
+	var cell = _world_to_cell(player_node.global_position)
+	if _is_grass_cell(cell) and not _is_water_cell(cell):
+		return
+	var target = _pick_land_position_near(player_node.global_position, player_ground_check_radius, 64)
+	player_node.global_position = target
+
 func _update_input_debug(delta: float) -> void:
 	if not input_debug_visible:
 		return
@@ -1249,7 +1268,7 @@ func _get_next_warehouse_cost() -> Dictionary:
 		"wood": warehouse_base_wood_cost * factor,
 		"gold": warehouse_base_gold_cost * factor,
 		"meat": warehouse_base_meat_cost * factor,
-		"sp": 1
+		"sp": 0
 	}
 
 func _get_primary_map_layer() -> TileMapLayer:

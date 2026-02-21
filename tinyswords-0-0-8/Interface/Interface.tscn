@@ -25,8 +25,8 @@
 [ext_resource type="Script" uid="uid://c2y6hlp18831o" path="res://Interface/ScaleButton.gd" id="14_f381r"]
 [ext_resource type="AudioStream" uid="uid://cgr4uasp7rpn3" path="res://Audio/click_003.ogg" id="15_gweiw"]
 [ext_resource type="Script" uid="uid://xeqineioqg2a" path="res://Interface/tile_map_layer.gd" id="15_xswsh"]
-[ext_resource type="Texture2D" uid="uid://chk5uj0tqnsvo" path="res://Assets/UI/Icons/Icon_10.png" id="16_save_icon"]
-[ext_resource type="Texture2D" uid="uid://bnkr6hhibim3o" path="res://Assets/UI/Icons/Icon_05.png" id="16_skill_icon"]
+[ext_resource type="Texture2D" uid="uid://chk5uj0tqnsvo" path="res://Tiny Swords/Tiny Swords (Free Pack)/UI Elements/UI Elements/Icons/Icon_10.png" id="16_save_icon"]
+[ext_resource type="Texture2D" uid="uid://bnkr6hhibim3o" path="res://Tiny Swords/Tiny Swords (Free Pack)/UI Elements/UI Elements/Icons/Icon_05.png" id="16_skill_icon"]
 [ext_resource type="PackedScene" uid="uid://cd78fxl4a4n33" path="res://Base_Object/PhysicItem.tscn" id="20_ll4ok"]
 [ext_resource type="PackedScene" uid="uid://c76j5j3jyd8qu" path="res://Interface/SkillTreeUI.tscn" id="21_skill_tree_ui"]
 
@@ -430,43 +430,6 @@ offset_bottom = 106.0
 grow_horizontal = 0
 theme_override_constants/separation = 10
 
-[node name="BagButton" type="TextureButton" parent="Interface/TopBar" unique_id=1942792526]
-custom_minimum_size = Vector2(64, 64)
-layout_mode = 2
-size_flags_horizontal = 4
-size_flags_vertical = 4
-texture_normal = ExtResource("13_eba0h")
-script = ExtResource("14_f381r")
-
-[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="Interface/TopBar/BagButton" unique_id=1963289332]
-stream = ExtResource("15_gweiw")
-volume_db = -5.0
-
-[node name="Label" type="Label" parent="Interface/TopBar/BagButton" unique_id=949924675]
-layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_top = 66.0
-offset_bottom = 90.0
-grow_vertical = 0
-theme_type_variation = &"GraphFrameTitleLabel"
-text = "储物箱"
-label_settings = SubResource("LabelSettings_gweiw")
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="ShortcutLabel" type="Label" parent="Interface/TopBar/BagButton" unique_id=2113456789]
-layout_mode = 1
-offset_left = 2.0
-offset_top = 2.0
-offset_right = 18.0
-offset_bottom = 18.0
-theme_type_variation = &"GraphFrameTitleLabel"
-text = "I"
-label_settings = SubResource("LabelSettings_gweiw")
-horizontal_alignment = 1
-vertical_alignment = 1
-
 [node name="SaveButton" type="TextureButton" parent="Interface/TopBar" unique_id=2114000001]
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
@@ -485,6 +448,7 @@ anchors_preset = 10
 anchor_right = 1.0
 offset_top = 66.0
 offset_bottom = 90.0
+grow_horizontal = 2
 grow_vertical = 0
 theme_type_variation = &"GraphFrameTitleLabel"
 text = "存档"
@@ -500,6 +464,44 @@ offset_right = 30.0
 offset_bottom = 18.0
 theme_type_variation = &"GraphFrameTitleLabel"
 text = "F5"
+label_settings = SubResource("LabelSettings_gweiw")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BagButton" type="TextureButton" parent="Interface/TopBar" unique_id=1942792526]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture_normal = ExtResource("13_eba0h")
+script = ExtResource("14_f381r")
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="Interface/TopBar/BagButton" unique_id=1963289332]
+stream = ExtResource("15_gweiw")
+volume_db = -5.0
+
+[node name="Label" type="Label" parent="Interface/TopBar/BagButton" unique_id=949924675]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 66.0
+offset_bottom = 90.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_type_variation = &"GraphFrameTitleLabel"
+text = "储物箱"
+label_settings = SubResource("LabelSettings_gweiw")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ShortcutLabel" type="Label" parent="Interface/TopBar/BagButton" unique_id=2113456789]
+layout_mode = 1
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 18.0
+offset_bottom = 18.0
+theme_type_variation = &"GraphFrameTitleLabel"
+text = "I"
 label_settings = SubResource("LabelSettings_gweiw")
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -522,6 +524,7 @@ anchors_preset = 10
 anchor_right = 1.0
 offset_top = 66.0
 offset_bottom = 90.0
+grow_horizontal = 2
 grow_vertical = 0
 theme_type_variation = &"GraphFrameTitleLabel"
 text = "科技"
@@ -606,8 +609,8 @@ position = Vector2(84, 161)
 item_type = "gold"
 is_static_spawn = true
 
-[connection signal="pressed" from="Interface/TopBar/BagButton" to="Interface" method="_on_bag_button_pressed"]
 [connection signal="pressed" from="Interface/TopBar/SaveButton" to="Interface" method="_on_save_button_pressed"]
+[connection signal="pressed" from="Interface/TopBar/BagButton" to="Interface" method="_on_bag_button_pressed"]
 [connection signal="pressed" from="Interface/TopBar/SkillButton" to="Interface" method="_on_tech_button_pressed"]
 
 [editable path="Terrain"]

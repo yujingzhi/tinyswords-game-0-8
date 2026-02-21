@@ -42,7 +42,8 @@ var pickup_fx_defs: Array[Dictionary] = [
 
 func _ready() -> void:
 	# 初始化碰撞层，并连接拾取回调
-	set_deferred("collision_mask", 1) 
+	set_deferred("collision_layer", 0)
+	set_deferred("collision_mask", 0)
 	add_to_group(&"pickup_item")
 	
 	if is_instance_valid(pickup_area) and not pickup_area.body_entered.is_connected(_on_pickup_area_body_entered):
