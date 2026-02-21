@@ -260,8 +260,11 @@ var skill_points: int = 0
 @export var player_ground_check_radius: float = 320.0
 var player_ground_check_timer: float = 0.0
 var skill_levels: Dictionary = {
+	"hero_base": 0,
+	"hero_adv": 0,
 	"worker_speed": 0,
 	"carry": 0,
+	"base_eff": 0,
 	"sheep_mutation": 0,
 	"redwood_seed": 0,
 	"rainbow_gold": 0
@@ -274,6 +277,11 @@ const SKILL_CHANCE_CAP: float = 0.20
 const SKILL_BASE_SHEEP_MUTATION_CHANCE: float = 0.02
 const SKILL_BASE_REDWOOD_SEED_CHANCE: float = 0.04
 const SKILL_BASE_RAINBOW_GOLD_CHANCE: float = 0.04
+const SKILL_HERO_BASE_HEALTH_PER_LEVEL: int = 2
+const SKILL_HERO_ADV_DAMAGE_PER_LEVEL: int = 1
+const SKILL_ENERGY_DECAY_MULTIPLIERS: Array[float] = [0.9, 0.8, 0.7, 0.6, 0.5]
+var _base_player_max_health: int = -1
+var _base_player_attack_damage: int = -1
 var entropy: float = 0.0
 var save_timer: float = 0.0
 var placing_redwood_seed: bool = false
@@ -917,7 +925,7 @@ func _process(delta: float) -> void:
 	game_time_sec += delta
 	if not enable_expansion_loop:
 		return
-	energy_points = max(0.0, energy_points - energy_decay_per_sec * delta)
+	energy_points = max(0.0, energy_points - _get_energy_decay_rate() * delta)
 	wood_burn_timer -= delta
 	if wood_burn_timer <= 0.0:
 		wood_burn_timer = wood_burn_interval
@@ -972,7 +980,7 @@ func _update_meta_hud(delta: float) -> void:
 		ui.call("update_warehouse_build_button_state", can_build, cost_wood, cost_gold, cost_meat, cost_sp, missing_wood, missing_gold, missing_meat, missing_sp, placing_warehouse)
 	if ui.has_method("update_player_experience"):
 		ui.call("update_player_experience", player_exp, exp_to_next, player_level)
-	ui.call("update_meta_hud", waves_survived, next_wave_in, enemies_alive, wave_size, energy_points, energy_decay_per_sec, energy_consumes_wood, _get_total_worker_speed_multiplier(), logistics_enabled, int(noise_seed), objective_text, hint_text, player_level, player_exp, exp_to_next, skill_points, warehouse_count, workers_current, workers_cap, cost_wood, cost_gold, cost_meat, cost_sp, placing_warehouse)
+	ui.call("update_meta_hud", waves_survived, next_wave_in, enemies_alive, wave_size, energy_points, _get_energy_decay_rate(), energy_consumes_wood, _get_total_worker_speed_multiplier(), logistics_enabled, int(noise_seed), objective_text, hint_text, player_level, player_exp, exp_to_next, skill_points, warehouse_count, workers_current, workers_cap, cost_wood, cost_gold, cost_meat, cost_sp, placing_warehouse)
 
 func _compute_next_wave_size() -> int:
 	if archer_wave_base <= 0:
@@ -1709,6 +1717,45 @@ func _add_experience(amount: int) -> void:
 		_recompute_exp_to_next()
 	_apply_all_skill_effects()
 
+func _get_hero_base_bonus() -> int:
+	var level = max(0, int(skill_levels.get("hero_base", 0)))
+	return level * SKILL_HERO_BASE_HEALTH_PER_LEVEL
+
+func _get_hero_adv_bonus() -> int:
+	var level = max(0, int(skill_levels.get("hero_adv", 0)))
+	return level * SKILL_HERO_ADV_DAMAGE_PER_LEVEL
+
+func _get_energy_decay_rate() -> float:
+	var level = max(0, int(skill_levels.get("base_eff", 0)))
+	if level <= 0:
+		return max(0.0, energy_decay_per_sec)
+	var idx = clamp(level - 1, 0, SKILL_ENERGY_DECAY_MULTIPLIERS.size() - 1)
+	return max(0.0, energy_decay_per_sec * float(SKILL_ENERGY_DECAY_MULTIPLIERS[idx]))
+
+func _apply_player_stat_bonuses() -> void:
+	var player = _get_player()
+	if player == null:
+		return
+	if _base_player_max_health < 0 and ("max_health" in player):
+		_base_player_max_health = int(player.get("max_health"))
+	if _base_player_attack_damage < 0 and ("attack_damage" in player):
+		_base_player_attack_damage = int(player.get("attack_damage"))
+	if _base_player_max_health >= 0 and ("max_health" in player):
+		var new_max = _base_player_max_health + _get_hero_base_bonus()
+		player.set("max_health", new_max)
+		var current_health_val = player.get("current_health")
+		if current_health_val == null:
+			current_health_val = new_max
+		else:
+			var current_int = int(current_health_val)
+			if current_int > new_max:
+				current_health_val = new_max
+				player.set("current_health", new_max)
+		get_tree().call_group("interface", "update_player_health", int(current_health_val), new_max)
+	if _base_player_attack_damage >= 0 and ("attack_damage" in player):
+		var new_damage = _base_player_attack_damage + _get_hero_adv_bonus()
+		player.set("attack_damage", new_damage)
+
 func _get_total_worker_speed_multiplier() -> float:
 	var level = max(0, int(skill_levels.get("worker_speed", 0)))
 	if level <= 0:
@@ -1749,6 +1796,7 @@ func _apply_object_drop_settings(obj_instance: Node) -> void:
 		obj_instance.redwood_seed_drop_chance = _get_redwood_seed_chance()
 
 func _apply_all_skill_effects() -> void:
+	_apply_player_stat_bonuses()
 	_apply_worker_speed_multiplier()
 	_apply_worker_carry_capacity()
 	var obstacles = get_tree().get_nodes_in_group("obstacle")
@@ -1770,7 +1818,22 @@ func try_buy_skill(skill_key: String) -> bool:
 	var current = max(0, int(skill_levels.get(key, 0)))
 	var cost = 0
 	var next = current
-	if key == "worker_speed":
+	if key == "hero_base":
+		if current >= 5:
+			return false
+		cost = 1 + current
+		next = current + 1
+	elif key == "hero_adv":
+		if current >= 5:
+			return false
+		cost = 1 + current
+		next = current + 1
+	elif key == "base_eff":
+		if current >= 5:
+			return false
+		cost = 1 + current
+		next = current + 1
+	elif key == "worker_speed":
 		if current >= SKILL_WORKER_SPEED_MULTIPLIERS.size():
 			return false
 		cost = 1

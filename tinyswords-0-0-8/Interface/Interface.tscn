@@ -423,14 +423,15 @@ horizontal_alignment = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -259.0
-offset_top = 42.0
-offset_right = -47.0
-offset_bottom = 106.0
+offset_left = -211.0
+offset_top = 37.0
+offset_right = 1.0
+offset_bottom = 101.0
 grow_horizontal = 0
 theme_override_constants/separation = 10
 
 [node name="SaveButton" type="TextureButton" parent="Interface/TopBar" unique_id=2114000001]
+visible = false
 custom_minimum_size = Vector2(64, 64)
 layout_mode = 2
 size_flags_horizontal = 4

@@ -16,6 +16,7 @@ class_name CharacterBase
 @export var move_speed: float = 200.0         
 @export_dir var texture_folder_path: String = "res://CharacterBase" 
 @export var max_health: int = 10
+@export var attack_damage: int = 1
 @export var max_stamina: int = 100
 @export var stamina_drain_rate: float = 8.0
 @export var stamina_regen_rate: float = 18.0
@@ -381,15 +382,15 @@ func _apply_attack_hit(body: Node2D) -> void:
 	if is_instance_valid(sheep):
 		if current_weapon_index != ToolType.KNIFE:
 			_equip_tool(ToolType.KNIFE)
-		sheep.take_damage(1)
-		print("攻击命中: Sheep | 伤害=1 | Weapon=", current_weapon_index, " | SheepHP=", sheep.health)
+		sheep.take_damage(attack_damage)
+		print("攻击命中: Sheep | 伤害=", attack_damage, " | Weapon=", current_weapon_index, " | SheepHP=", sheep.health)
 		return
 	# 再处理敌人组
 	if body.is_in_group("enemy") and body.has_method("take_damage"):
 		if current_weapon_index != ToolType.KNIFE:
 			_equip_tool(ToolType.KNIFE)
-		body.take_damage(1)
-		print("攻击命中: Enemy | 伤害=1 | Weapon=", current_weapon_index, " | Enemy=", body.name)
+		body.take_damage(attack_damage)
+		print("攻击命中: Enemy | 伤害=", attack_damage, " | Weapon=", current_weapon_index, " | Enemy=", body.name)
 		return
 		
 	# ✨ 核心优化：多态转换。如果 body 不是 ObjectBase 的子类，这里会返回 null
@@ -411,7 +412,7 @@ func _apply_attack_hit(body: Node2D) -> void:
 		# 3. 结算伤害
 		if can_damage:
 			# 假设默认造成 1 点伤害。如果你的主角有攻击力变量，请替换为 attack_damage
-			interactable.update_health(1) 
+			interactable.update_health(attack_damage) 
 			if target_type == "tree":
 				_play_sfx(sfx_wood)
 			elif target_type == "rock" or target_type == "gold":
@@ -424,7 +425,7 @@ func _apply_attack_hit(body: Node2D) -> void:
 				required_tool = ToolType.PICKAXE
 			if required_tool != ToolType.HAND:
 				_equip_tool(required_tool)
-				interactable.update_health(1)
+				interactable.update_health(attack_damage)
 				if target_type == "tree":
 					_play_sfx(sfx_wood)
 				elif target_type == "rock" or target_type == "gold":

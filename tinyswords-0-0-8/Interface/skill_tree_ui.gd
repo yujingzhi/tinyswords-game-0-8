@@ -364,9 +364,14 @@ func _show_skill_tooltip(node: Control, key: String) -> void:
 		tooltip_cost.text = "消耗 SP: " + str(cost)
 		
 	var desc = "暂无描述"
-	if key == "worker_speed": desc = "提升工人移动速度"
+	if key == "hero_base": desc = "提升主角最大生命值"
+	elif key == "hero_adv": desc = "提升主角攻击伤害"
+	elif key == "worker_speed": desc = "提升工人移动速度"
 	elif key == "carry": desc = "提升工人最大搬运量"
+	elif key == "base_eff": desc = "降低能量衰减速度"
 	elif key == "sheep_mutation": desc = "解锁基因变异功能"
+	elif key == "redwood_seed": desc = "提升红木种子掉率"
+	elif key == "rainbow_gold": desc = "提升彩色矿石掉率"
 	
 	tooltip_desc.text = desc
 	
