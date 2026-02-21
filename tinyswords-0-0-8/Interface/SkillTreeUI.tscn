@@ -4,7 +4,7 @@
 [ext_resource type="FontFile" uid="uid://ckt0umhc75sre" path="res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf" id="2_y1g6w"]
 [ext_resource type="Texture2D" path="res://Assets/UI/Papers/RegularPaper.png" id="3_mvb0y"]
 [ext_resource type="Texture2D" path="res://Assets/UI/Icons/Icon_09.png" id="4_5k5ob"]
-[ext_resource type="Texture2D" path="res://Assets/UI/Icons/Icon_08.png" id="5_1neai"]
+[ext_resource type="Texture2D" uid="uid://b47a4j4n7mucn" path="res://Interface/Banners/Banner_Slots.png" id="5_1neai"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font = ExtResource("2_y1g6w")
@@ -29,7 +29,7 @@ script = ExtResource("1_kew1u")
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0, 0, 0, 0.7)
+color = Color(0, 0, 0, 0)
 mouse_filter = 2
 
 [node name="Paper" type="NinePatchRect" parent="Overlay"]
@@ -146,18 +146,18 @@ size_flags_vertical = 3
 position = Vector2(40, 40)
 
 [node name="Button" type="TextureButton" parent="Overlay/Paper/Content/Right/Scroll/TreeCanvas/SkillNode_Example"]
-custom_minimum_size = Vector2(72, 72)
+custom_minimum_size = Vector2(64, 64)
 texture_normal = ExtResource("5_1neai")
 
 [node name="Label" type="Label" parent="Overlay/Paper/Content/Right/Scroll/TreeCanvas/SkillNode_Example"]
-anchor_left = 0.0
+anchor_left = 0.5
 anchor_top = 0.0
-anchor_right = 0.0
+anchor_right = 0.5
 anchor_bottom = 0.0
-offset_left = -36.0
-offset_top = 78.0
-offset_right = 108.0
-offset_bottom = 104.0
+offset_left = -120.0
+offset_top = 72.0
+offset_right = 120.0
+offset_bottom = 96.0
 text = "示例技能"
 label_settings = SubResource("LabelSettings_ui")
 horizontal_alignment = 1

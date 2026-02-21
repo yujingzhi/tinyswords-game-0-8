@@ -8,6 +8,7 @@ extends Control
 @onready var tooltip_desc: Label = $Overlay/Paper/Tooltip/VBox/Desc
 @onready var tree_canvas: Control = $Overlay/Paper/Content/Right/Scroll/TreeCanvas
 @onready var example_node: Control = $Overlay/Paper/Content/Right/Scroll/TreeCanvas/SkillNode_Example
+@onready var paper: NinePatchRect = $Overlay/Paper
 
 @onready var tab_hero: Button = $Overlay/Paper/Content/Left/Tabs/TabHero
 @onready var tab_sheep: Button = $Overlay/Paper/Content/Left/Tabs/TabSheep
@@ -20,6 +21,10 @@ var _skill_defs: Array[Dictionary] = []
 var _skill_nodes: Dictionary = {}
 var _skill_levels: Dictionary = {}
 var _skill_points: int = 0
+var _paper_origin_pos: Vector2 = Vector2.ZERO
+var _paper_tween: Tween
+var _connection_lines: Array[Line2D] = []
+var _connection_defs: Array[Dictionary] = []
 
 const SKILL_WORKER_SPEED_MULTIPLIERS: Array[float] = [1.1, 1.2, 1.4, 1.6, 1.8, 2.0]
 const SKILL_CARRY_CAPACITIES: Array[int] = [2, 3, 4, 5, 6]
@@ -32,6 +37,7 @@ const SKILL_BASE_RAINBOW_GOLD_CHANCE: float = 0.04
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	_paper_origin_pos = paper.position
 	close_button.pressed.connect(close_ui)
 	tab_hero.pressed.connect(func(): _select_category("1. 主角专精"))
 	tab_sheep.pressed.connect(func(): _select_category("2. 羊群物流"))
@@ -55,13 +61,28 @@ func open_ui() -> void:
 	get_tree().paused = true
 	visible = true
 	_refresh_from_level()
+	_hide_tooltip()
+	if _paper_tween != null and _paper_tween.is_running():
+		_paper_tween.kill()
+	paper.position = _paper_origin_pos + Vector2(0, 50)
+	paper.modulate.a = 0.0
+	_paper_tween = create_tween().set_parallel(true)
+	_paper_tween.tween_property(paper, "position", _paper_origin_pos, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_paper_tween.tween_property(paper, "modulate:a", 1.0, 0.2)
 
 func close_ui() -> void:
 	if not visible:
 		return
-	visible = false
-	get_tree().paused = _prev_paused
 	_hide_tooltip()
+	if _paper_tween != null and _paper_tween.is_running():
+		_paper_tween.kill()
+	_paper_tween = create_tween().set_parallel(true)
+	_paper_tween.tween_property(paper, "position", _paper_origin_pos + Vector2(0, 50), 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	_paper_tween.tween_property(paper, "modulate:a", 0.0, 0.2)
+	_paper_tween.chain().tween_callback(func():
+		visible = false
+		get_tree().paused = _prev_paused
+	)
 
 func set_skill_points(value: int) -> void:
 	_skill_points = max(0, value)
@@ -71,19 +92,28 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("toggle_tech_tree") and not event.is_echo():
 		toggle()
 		get_viewport().set_input_as_handled()
+		return
+	if visible and event.is_action_pressed("ui_cancel") and not event.is_echo():
+		close_ui()
+		get_viewport().set_input_as_handled()
 
 func _build_skill_defs() -> void:
 	_skill_defs = [
-		{"key": "worker_speed", "name": "工人速度", "category": "2. 羊群物流"},
-		{"key": "carry", "name": "搬运容量", "category": "2. 羊群物流"},
-		{"key": "sheep_mutation", "name": "羊基因变异", "category": "4. 基因变异"},
-		{"key": "redwood_seed", "name": "红木种子掉率", "category": "4. 基因变异"},
-		{"key": "rainbow_gold", "name": "彩色矿石掉率", "category": "4. 基因变异"}
+		{"key": "worker_speed", "name": "工人速度", "category": "2. 羊群物流", "tier": 0, "row": 0, "requires": []},
+		{"key": "carry", "name": "搬运容量", "category": "2. 羊群物流", "tier": 1, "row": 0, "requires": ["worker_speed"]},
+		{"key": "sheep_mutation", "name": "羊基因变异", "category": "4. 基因变异", "tier": 0, "row": 0, "requires": []},
+		{"key": "redwood_seed", "name": "红木种子掉率", "category": "4. 基因变异", "tier": 1, "row": 0, "requires": ["sheep_mutation"]},
+		{"key": "rainbow_gold", "name": "彩色矿石掉率", "category": "4. 基因变异", "tier": 2, "row": 0, "requires": ["redwood_seed"]}
 	]
 
 func _build_skill_nodes() -> void:
 	if tree_canvas == null or example_node == null:
 		return
+	for line in _connection_lines:
+		if line != null and is_instance_valid(line):
+			line.queue_free()
+	_connection_lines.clear()
+	_connection_defs.clear()
 	for k in _skill_nodes.keys():
 		var n = _skill_nodes[k].get("root")
 		if n != null and is_instance_valid(n):
@@ -96,7 +126,9 @@ func _build_skill_nodes() -> void:
 			continue
 		var node = example_node.duplicate() as Control
 		node.name = "SkillNode_" + key
-		node.position = Vector2(40.0, 40.0 + float(idx) * 140.0)
+		var tier = int(def.get("tier", 0))
+		var row = int(def.get("row", idx))
+		node.position = Vector2(60.0 + float(tier) * 220.0, 60.0 + float(row) * 180.0)
 		tree_canvas.add_child(node)
 		var btn = node.get_node_or_null("Button") as TextureButton
 		var lbl = node.get_node_or_null("Label") as Label
@@ -109,10 +141,16 @@ func _build_skill_nodes() -> void:
 			"button": btn,
 			"label": lbl,
 			"category": String(def.get("category", "")),
-			"name": String(def.get("name", ""))
+			"name": String(def.get("name", "")),
+			"requires": def.get("requires", [])
 		}
+		var prereqs = def.get("requires", [])
+		if typeof(prereqs) == TYPE_ARRAY and not (prereqs as Array).is_empty():
+			for p in prereqs:
+				_connection_defs.append({"from": String(p), "to": key})
 		idx += 1
 	example_node.visible = false
+	_rebuild_connections()
 
 func _select_category(category: String) -> void:
 	_current_category = category
@@ -121,6 +159,9 @@ func _select_category(category: String) -> void:
 		var root = info.get("root")
 		if root != null and is_instance_valid(root):
 			root.visible = String(info.get("category", "")) == category
+	for line in _connection_lines:
+		if line != null and is_instance_valid(line):
+			line.visible = true
 	_refresh_from_level()
 
 func _get_level_node() -> Node:
@@ -141,18 +182,86 @@ func _refresh_from_level() -> void:
 		var root = info.get("root")
 		if root == null or not is_instance_valid(root):
 			continue
-		var current_level = max(0, int(_skill_levels.get(String(k), 0)))
-		var cost = _get_next_cost(String(k), current_level)
+		var skill_key = String(k)
+		var current_level = max(0, int(_skill_levels.get(skill_key, 0)))
+		var cost = _get_next_cost(skill_key, current_level)
+		var unlocked = true
+		var prereqs = info.get("requires", [])
+		if typeof(prereqs) == TYPE_ARRAY:
+			for p in prereqs:
+				var pk = String(p)
+				if max(0, int(_skill_levels.get(pk, 0))) <= 0:
+					unlocked = false
+					break
 		var btn = info.get("button") as TextureButton
 		if btn != null:
-			btn.disabled = cost <= 0 or _skill_points < cost
-			btn.modulate = Color(0.6, 0.6, 0.6, 0.9) if btn.disabled else Color(1, 1, 1, 1)
+			btn.disabled = (not unlocked) or cost <= 0 or _skill_points < cost
+			if not unlocked:
+				btn.modulate = Color(0.35, 0.35, 0.35, 0.9)
+			elif current_level <= 0:
+				btn.modulate = Color(0.6, 0.6, 0.6, 0.9)
+			else:
+				btn.modulate = Color(1, 1, 1, 1)
 		if not root.visible:
 			continue
 		var lbl = info.get("label") as Label
 		if lbl == null:
 			continue
-		lbl.text = _get_skill_label_text(String(k), String(info.get("name", "")))
+		lbl.text = _get_skill_label_text(skill_key, String(info.get("name", "")))
+		lbl.modulate = Color(0.7, 0.7, 0.7, 1) if current_level <= 0 else Color(1, 1, 1, 1)
+	_update_connection_visuals()
+
+func _rebuild_connections() -> void:
+	for line in _connection_lines:
+		if line != null and is_instance_valid(line):
+			line.queue_free()
+	_connection_lines.clear()
+	for def in _connection_defs:
+		var from_key = String(def.get("from", ""))
+		var to_key = String(def.get("to", ""))
+		if from_key.is_empty() or to_key.is_empty():
+			continue
+		var line = Line2D.new()
+		line.width = 4.0
+		line.default_color = Color(0.35, 0.35, 0.35, 0.9)
+		line.z_index = -1
+		tree_canvas.add_child(line)
+		_connection_lines.append(line)
+	_update_connection_visuals()
+
+func _update_connection_visuals() -> void:
+	if tree_canvas == null:
+		return
+	var line_idx = 0
+	for def in _connection_defs:
+		if line_idx >= _connection_lines.size():
+			break
+		var line = _connection_lines[line_idx]
+		line_idx += 1
+		if line == null or not is_instance_valid(line):
+			continue
+		var from_key = String(def.get("from", ""))
+		var to_key = String(def.get("to", ""))
+		var from_info := _skill_nodes.get(from_key, null) as Dictionary
+		var to_info := _skill_nodes.get(to_key, null) as Dictionary
+		var from_root = from_info.get("root", null) as Control
+		var to_root = to_info.get("root", null) as Control
+		var from_btn = from_info.get("button", null) as TextureButton
+		var to_btn = to_info.get("button", null) as TextureButton
+		if from_root == null or to_root == null or from_btn == null or to_btn == null:
+			line.visible = false
+			continue
+		if not from_root.visible or not to_root.visible:
+			line.visible = false
+			continue
+		line.visible = true
+		var from_center = from_root.position + from_btn.position + from_btn.size * 0.5
+		var to_center = to_root.position + to_btn.position + to_btn.size * 0.5
+		line.clear_points()
+		line.add_point(from_center)
+		line.add_point(to_center)
+		var lit = max(0, int(_skill_levels.get(from_key, 0))) > 0
+		line.default_color = Color(0.9, 0.9, 0.9, 0.95) if lit else Color(0.35, 0.35, 0.35, 0.9)
 
 func _get_skill_label_text(key: String, display_name: String) -> String:
 	var level = max(0, int(_skill_levels.get(key, 0)))
