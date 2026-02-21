@@ -590,6 +590,11 @@ func _configure_worker_instance(worker_instance: Node) -> void:
 		worker_instance.worker_carry_meat_move_texture = worker_meat_run_texture
 	if "worker_mode" in worker_instance:
 		worker_instance.worker_mode = true
+	if worker_instance is Node:
+		var node := worker_instance as Node
+		if node.is_in_group(&"sheep"):
+			node.remove_from_group(&"sheep")
+		node.add_to_group(worker_group_name)
 	if "logistics_enabled" in worker_instance:
 		worker_instance.logistics_enabled = true
 	if "logistics_group" in worker_instance:

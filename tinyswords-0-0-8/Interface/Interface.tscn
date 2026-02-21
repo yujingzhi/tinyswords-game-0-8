@@ -21,14 +21,14 @@
 [ext_resource type="Texture2D" uid="uid://4bsibpswdkdc" path="res://Assets/UI/Bars/SmallBar_Base.png" id="11_smallbar_base"]
 [ext_resource type="Texture2D" uid="uid://dfmcs4vv4joxs" path="res://Assets/UI/Bars/SmallBar_Fill.png" id="11_smallbar_fill"]
 [ext_resource type="Texture2D" uid="uid://br6if61mcsioe" path="res://Interface/Icons/Bag_Icon.png" id="13_eba0h"]
-[ext_resource type="Texture2D" path="res://Assets/UI/Icons/Icon_10.png" id="16_save_icon"]
-[ext_resource type="Texture2D" path="res://Assets/UI/Icons/Icon_05.png" id="16_skill_icon"]
-[ext_resource type="PackedScene" path="res://Interface/SkillTreeUI.tscn" id="21_skill_tree_ui"]
 [ext_resource type="Texture2D" uid="uid://c65fi1y8nwn7k" path="res://Interface/Banners/Banner.png" id="14_5y088"]
 [ext_resource type="Script" uid="uid://c2y6hlp18831o" path="res://Interface/ScaleButton.gd" id="14_f381r"]
 [ext_resource type="AudioStream" uid="uid://cgr4uasp7rpn3" path="res://Audio/click_003.ogg" id="15_gweiw"]
 [ext_resource type="Script" uid="uid://xeqineioqg2a" path="res://Interface/tile_map_layer.gd" id="15_xswsh"]
+[ext_resource type="Texture2D" uid="uid://chk5uj0tqnsvo" path="res://Assets/UI/Icons/Icon_10.png" id="16_save_icon"]
+[ext_resource type="Texture2D" uid="uid://bnkr6hhibim3o" path="res://Assets/UI/Icons/Icon_05.png" id="16_skill_icon"]
 [ext_resource type="PackedScene" uid="uid://cd78fxl4a4n33" path="res://Base_Object/PhysicItem.tscn" id="20_ll4ok"]
+[ext_resource type="PackedScene" uid="uid://c76j5j3jyd8qu" path="res://Interface/SkillTreeUI.tscn" id="21_skill_tree_ui"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_gweiw"]
 font = ExtResource("10_8ua86")
@@ -420,19 +420,19 @@ label_settings = SubResource("LabelSettings_gweiw")
 horizontal_alignment = 1
 
 [node name="TopBar" type="HBoxContainer" parent="Interface" unique_id=505015193]
+anchors_preset = 1
 anchor_left = 1.0
-anchor_top = 0.0
 anchor_right = 1.0
-anchor_bottom = 0.0
-offset_left = -224.0
+offset_left = -259.0
 offset_top = 42.0
-offset_right = -12.0
-offset_bottom = 174.0
+offset_right = -47.0
+offset_bottom = 106.0
+grow_horizontal = 0
 theme_override_constants/separation = 10
 
 [node name="BagButton" type="TextureButton" parent="Interface/TopBar" unique_id=1942792526]
-layout_mode = 2
 custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 texture_normal = ExtResource("13_eba0h")
@@ -444,9 +444,9 @@ volume_db = -5.0
 
 [node name="Label" type="Label" parent="Interface/TopBar/BagButton" unique_id=949924675]
 layout_mode = 1
+anchors_preset = 10
 anchor_right = 1.0
 offset_top = 66.0
-offset_right = 0.0
 offset_bottom = 90.0
 grow_vertical = 0
 theme_type_variation = &"GraphFrameTitleLabel"
@@ -468,8 +468,8 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="SaveButton" type="TextureButton" parent="Interface/TopBar" unique_id=2114000001]
-layout_mode = 2
 custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 texture_normal = ExtResource("16_save_icon")
@@ -481,9 +481,9 @@ volume_db = -5.0
 
 [node name="Label" type="Label" parent="Interface/TopBar/SaveButton" unique_id=2114000003]
 layout_mode = 1
+anchors_preset = 10
 anchor_right = 1.0
 offset_top = 66.0
-offset_right = 0.0
 offset_bottom = 90.0
 grow_vertical = 0
 theme_type_variation = &"GraphFrameTitleLabel"
@@ -505,8 +505,8 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="SkillButton" type="TextureButton" parent="Interface/TopBar" unique_id=1891400210]
-layout_mode = 2
 custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 texture_normal = ExtResource("16_skill_icon")
@@ -518,9 +518,9 @@ volume_db = -5.0
 
 [node name="Label" type="Label" parent="Interface/TopBar/SkillButton" unique_id=1891400212]
 layout_mode = 1
+anchors_preset = 10
 anchor_right = 1.0
 offset_top = 66.0
-offset_right = 0.0
 offset_bottom = 90.0
 grow_vertical = 0
 theme_type_variation = &"GraphFrameTitleLabel"
@@ -541,16 +541,17 @@ label_settings = SubResource("LabelSettings_gweiw")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="SkillTreeUI" parent="Interface" instance=ExtResource("21_skill_tree_ui")]
+[node name="SkillTreeUI" parent="Interface" unique_id=380165154 instance=ExtResource("21_skill_tree_ui")]
+layout_mode = 3
 
 [node name="QuickBar" type="HBoxContainer" parent="Interface" unique_id=2113774042]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 78.0
-offset_top = -60.0
-offset_right = 864.0
-offset_bottom = 132.0
+offset_left = 31.0
+offset_top = -86.0
+offset_right = 1015.0
+offset_bottom = 106.0
 grow_vertical = 0
 scale = Vector2(0.3, 0.3)
 theme_override_constants/separation = 6

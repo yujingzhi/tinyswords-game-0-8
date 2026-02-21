@@ -121,7 +121,11 @@ const WORKER_CARRY_TEXTURES: Dictionary = {
 
 func _ready() -> void:
 	# 初始化出生位置与动画
+	if worker_mode and logistics_group == &"sheep":
+		logistics_group = &"worker"
 	add_to_group(logistics_group)
+	if worker_mode and is_in_group(&"sheep"):
+		remove_from_group(&"sheep")
 	base_move_speed = move_speed
 	home_position = global_position
 	_build_animations()

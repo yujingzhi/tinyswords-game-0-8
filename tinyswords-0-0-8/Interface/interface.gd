@@ -27,7 +27,7 @@ var warehouse_meta_label: Label
 var objective_meta_label: Label
 var hint_meta_label: Label
 var meta_hud_toggle_button: Button
-var meta_hud_expanded: bool = true
+var meta_hud_expanded: bool = false
 var meta_hud_anim_tween: Tween
 var exp_level_label: Label
 var exp_name_label: Label
