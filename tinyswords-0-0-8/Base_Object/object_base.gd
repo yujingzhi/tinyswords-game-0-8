@@ -103,7 +103,8 @@ func die() -> void:
 					drop_instance.call_deferred("_refresh_texture")
 					
 				var random_offset = Vector2(randf_range(-15.0, 15.0), randf_range(-15.0, 15.0))
-				drop_instance.set_deferred("global_position", global_position + random_offset)
+				var drop_pos = _snap_drop_position(global_position + random_offset, global_position, 32.0)
+				drop_instance.set_deferred("global_position", drop_pos)
 		if type == "Tree" and drop_item_type == "wood" and redwood_seed_drop_chance > 0.0 and randf() < redwood_seed_drop_chance:
 			var seed_instance = drop_item_scene.instantiate()
 			if seed_instance:
@@ -113,6 +114,20 @@ func die() -> void:
 				if seed_instance.has_method("_refresh_texture"):
 					seed_instance.call_deferred("_refresh_texture")
 				var seed_offset = Vector2(randf_range(-12.0, 12.0), randf_range(-12.0, 12.0))
-				seed_instance.set_deferred("global_position", global_position + seed_offset)
+				var seed_pos = _snap_drop_position(global_position + seed_offset, global_position, 28.0)
+				seed_instance.set_deferred("global_position", seed_pos)
 				
 	queue_free()
+
+func _get_level_node() -> Node:
+	return get_tree().get_first_node_in_group("level")
+
+func _snap_drop_position(world_pos: Vector2, origin_world_pos: Vector2, radius: float) -> Vector2:
+	var level = _get_level_node()
+	if level == null:
+		return world_pos
+	if level.has_method("_snap_position_to_land"):
+		return level.call("_snap_position_to_land", world_pos, origin_world_pos, radius)
+	if level.has_method("_pick_land_position_near"):
+		return level.call("_pick_land_position_near", origin_world_pos, radius, 48)
+	return world_pos

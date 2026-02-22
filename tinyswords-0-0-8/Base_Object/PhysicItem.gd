@@ -38,6 +38,7 @@ var pickup_fx_defs: Array[Dictionary] = [
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var text_label: Label = $TextLabel
 @onready var pickup_area: Area2D = $Area2D 
+var spawn_origin: Vector2 = Vector2.ZERO
 # pickup_area 用于检测玩家接近
 
 func _ready() -> void:
@@ -45,6 +46,7 @@ func _ready() -> void:
 	set_deferred("collision_layer", 0)
 	set_deferred("collision_mask", 0)
 	add_to_group(&"pickup_item")
+	call_deferred("_capture_spawn_origin")
 	
 	if is_instance_valid(pickup_area) and not pickup_area.body_entered.is_connected(_on_pickup_area_body_entered):
 		pickup_area.body_entered.connect(_on_pickup_area_body_entered)
@@ -67,6 +69,10 @@ func _ready() -> void:
 			var jump_tween: Tween = create_tween()
 			jump_tween.tween_property(sprite, "offset:y", -45.0, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 			jump_tween.tween_property(sprite, "offset:y", 0.0, 0.2).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	var timer = get_tree().create_timer(0.35)
+	timer.timeout.connect(_snap_to_land)
+	var timer2 = get_tree().create_timer(0.8)
+	timer2.timeout.connect(_snap_to_land)
 
 func _refresh_texture() -> void:
 	# 根据 item_type 切换贴图
@@ -112,6 +118,22 @@ func _refresh_texture() -> void:
 			sprite.modulate = Color(1, 1, 1, 1)
 			if text_label:
 				text_label.visible = false
+
+func _capture_spawn_origin() -> void:
+	spawn_origin = global_position
+
+func _get_level_node() -> Node:
+	return get_tree().get_first_node_in_group("level")
+
+func _snap_to_land() -> void:
+	var level = _get_level_node()
+	if level == null:
+		return
+	if level.has_method("_snap_position_to_land"):
+		var snapped = level.call("_snap_position_to_land", global_position, spawn_origin, 64.0)
+		if snapped != global_position:
+			global_position = snapped
+			linear_velocity = Vector2.ZERO
 
 func _on_pickup_area_body_entered(body: Node2D) -> void:
 	# 🌟 优化 5：使用 &"字符串" (StringName) 提升底层分组查询性能

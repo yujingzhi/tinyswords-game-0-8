@@ -15,11 +15,28 @@ class_name Level
 @export var archer_scene: PackedScene
 @export var total_archers: int = 3
 @export var archer_roam_cell_radius: int = 4
+@export var enemy_warrior_scene: PackedScene
+@export var enemy_lancer_scene: PackedScene
+@export var enemy_archer_scene: PackedScene
+@export var enemy_monk_scene: PackedScene
+@export var enemy_lancer_ratio_base: float = 0.1
+@export var enemy_lancer_ratio_per_wave: float = 0.02
+@export var enemy_archer_ratio_base: float = 0.08
+@export var enemy_archer_ratio_per_wave: float = 0.015
+@export var enemy_monk_ratio_base: float = 0.0
+@export var enemy_monk_ratio_per_wave: float = 0.01
+@export var enemy_monk_unlock_wave: int = 5
+@export var enemy_hp_scale_every: int = 3
+@export var enemy_hp_scale_step: float = 0.08
+@export var enemy_damage_scale_every: int = 4
+@export var enemy_damage_scale_step: float = 0.06
 # total_* 控制生成数量，*_roam_cell_radius 控制漫游范围
 
 @export var use_noise_terrain: bool = true
-@export var map_width: int = 64
+@export var map_width: int = 32
 @export var map_height: int = 64
+@export var defense_zone_height: int = 12
+@export var defense_build_band_height: int = 4
 @export var noise_seed: int = 1337
 @export var noise_frequency: float = 0.06
 @export var noise_octaves: int = 3
@@ -73,6 +90,11 @@ class_name Level
 @export var worker_spawn_max_allowed_distance: float = 1200.0
 @export var worker_spawn_max_exit_target_distance: float = 240.0
 @export var worker_spawn_oob_margin_pixels: float = 96.0
+@export var worker_drift_monitor_enabled: bool = true
+@export var worker_drift_speed_multiplier: float = 2.5
+@export var worker_drift_sample_min_time: float = 0.08
+@export var worker_drift_warn_cooldown: float = 0.6
+@export var worker_drift_distance_jump: float = 120.0
 @export var worker_empty_idle_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Idle.png")
 @export var worker_empty_run_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Run.png")
 @export var worker_idle_texture: Texture2D = preload("res://Assets/Units/Pawn/Pawn_Idle Wood.png")
@@ -170,6 +192,7 @@ var save_enabled: bool = false
 @export var redwood_tree_scene: PackedScene = preload("res://Base_Object/Trees/Tree.tscn")
 @export var lamb_release_mutate_time_sec: float = 18.0
 @export var lamb_release_spawn_radius: float = 36.0
+@export var lamb_place_clear_radius: float = 22.0
 @export var workers_per_warehouse: int = 3
 @export var warehouse_base_wood_cost: int = 10
 @export var warehouse_base_gold_cost: int = 10
@@ -209,6 +232,9 @@ var tree_cells: Array[Vector2i] = []
 var rock_cells: Array[Vector2i] = []
 var gold_cells: Array[Vector2i] = []
 var deep_mountain_cells: Array[Vector2i] = []
+var defense_entry_cells: Array[Vector2i] = []
+var defense_build_cells: Array[Vector2i] = []
+var region_debug_overlay: Node2D
 var world_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var energy_points: float = 0.0
 var logistics_multiplier: float = 1.0
@@ -217,10 +243,12 @@ var archer_wave_timer: float = 0.0
 var collection_piles: Array[Node2D] = []
 var pile_build_timer: float = 0.0
 var worker_spawn_attempts: int = 0
-var pending_worker_spawn_origin: Vector2 = Vector2.ZERO
-var has_pending_worker_spawn_origin: bool = false
 var worker_spawn_monitor: Dictionary = {}
 var worker_spawn_monitor_timer: float = 0.0
+var worker_drift_monitor: Dictionary = {}
+var worker_drift_messages: Array[String] = []
+var worker_drift_status: Array[String] = []
+var worker_spawn_no_fade_once: bool = false
 var camera_dragging: bool = false
 var input_debug_visible: bool = false
 var input_debug_timer: float = 0.0
@@ -252,6 +280,9 @@ var hovered_warehouse: Node2D
 var moving_warehouse: Node2D
 var moving_warehouse_original_pos: Vector2 = Vector2.ZERO
 var moving_warehouse_original_z: int = 0
+var moving_warehouse_recalled_count: int = 0
+var pending_worker_spawn_origin: Vector2 = Vector2.ZERO
+var has_pending_worker_spawn_origin: bool = false
 var player_level: int = 1
 var player_exp: int = 0
 var exp_to_next: int = 0
@@ -287,6 +318,9 @@ var save_timer: float = 0.0
 var placing_redwood_seed: bool = false
 var redwood_seed_preview: Node2D
 var redwood_seed_preview_label: Label
+var placing_lamb: bool = false
+var lamb_preview: Node2D
+var lamb_preview_sprite: Sprite2D
 var redwood_growth_queue: Array[Dictionary] = []
 var redwood_planted_cells: Dictionary = {}
 
@@ -384,6 +418,26 @@ func _ready() -> void:
 func _input(event: InputEvent) -> void:
 	if game_camera == null:
 		return
+	if placing_lamb:
+		if event is InputEventMouseButton:
+			var lamb_mouse := event as InputEventMouseButton
+			if lamb_mouse.button_index == MOUSE_BUTTON_RIGHT and lamb_mouse.pressed:
+				_cancel_lamb_placement()
+				get_viewport().set_input_as_handled()
+				return
+			if lamb_mouse.button_index == MOUSE_BUTTON_LEFT and lamb_mouse.pressed:
+				var cell = _world_to_cell(get_global_mouse_position())
+				if _can_place_lamb_at_cell(cell):
+					_place_lamb_at_cell(cell)
+					_cancel_lamb_placement()
+				get_viewport().set_input_as_handled()
+				return
+		if event is InputEventKey:
+			var lamb_key := event as InputEventKey
+			if lamb_key.pressed and not lamb_key.echo and lamb_key.keycode == KEY_ESCAPE:
+				_cancel_lamb_placement()
+				get_viewport().set_input_as_handled()
+				return
 	if placing_redwood_seed:
 		if event is InputEventMouseButton:
 			var seed_mouse := event as InputEventMouseButton
@@ -414,11 +468,16 @@ func _input(event: InputEvent) -> void:
 			if mouse_event.button_index == MOUSE_BUTTON_LEFT and mouse_event.pressed:
 				var cell = _world_to_cell(get_global_mouse_position())
 				if _can_place_warehouse_at_cell(cell, moving_warehouse):
+					pending_worker_spawn_origin = _cell_to_world(cell)
+					has_pending_worker_spawn_origin = true
 					if moving_warehouse != null and is_instance_valid(moving_warehouse):
 						var sprite = moving_warehouse.get_node_or_null("Sprite2D") as Sprite2D
 						if sprite != null:
 							sprite.modulate = Color(1, 1, 1, 1)
 						moving_warehouse.z_index = moving_warehouse_original_z
+						if moving_warehouse_recalled_count > 0:
+							_dispatch_workers_from_warehouse(moving_warehouse, moving_warehouse_recalled_count)
+							moving_warehouse_recalled_count = 0
 						moving_warehouse = null
 						placing_warehouse = false
 						_clear_warehouse_preview()
@@ -442,6 +501,7 @@ func _input(event: InputEvent) -> void:
 				moving_warehouse_original_pos = moving_warehouse.global_position
 				moving_warehouse_original_z = moving_warehouse.z_index
 				moving_warehouse.z_index = 90
+				moving_warehouse_recalled_count = max(_recall_workers_for_warehouse(moving_warehouse), workers_per_warehouse)
 				placing_warehouse = true
 				pending_warehouse_cost_wood = 0
 				pending_warehouse_cost_gold = 0
@@ -532,7 +592,7 @@ func spawn_objects() -> void:
 		
 		# 5. 设置位置
 		# 关键步骤：把网格坐标 (例如 10, 5) 转成像素坐标 (例如 640, 320)
-		obj_instance.position = spawn_layer.map_to_local(random_cell)
+		obj_instance.position = _cell_to_world_from_layer(random_cell, spawn_layer)
 		
 		# 6. 添加到场景
 		objects_container.add_child(obj_instance)
@@ -583,7 +643,7 @@ func spawn_sheep() -> void:
 		if use_noise_terrain:
 			sheep_instance.position = _cell_to_world(random_cell)
 		else:
-			sheep_instance.position = sheep_spawn_layer.map_to_local(random_cell)
+			sheep_instance.position = _cell_to_world_from_layer(random_cell, sheep_spawn_layer)
 		objects_container.add_child(sheep_instance)
 		if sheep_instance.has_signal("died"):
 			if not sheep_instance.died.is_connected(_on_sheep_died.bind(sheep_instance)):
@@ -801,6 +861,83 @@ func _update_worker_spawn_monitor(delta: float) -> void:
 			if worker_spawn_monitor_verbose:
 				_emit_input_debug("worker_spawn_giveup pos=" + str(pos) + " home=" + str(home))
 
+func _update_worker_drift_monitor(delta: float) -> void:
+	if not worker_drift_monitor_enabled:
+		worker_drift_messages.clear()
+		worker_drift_status.clear()
+		return
+	worker_drift_messages.clear()
+	worker_drift_status.clear()
+	var workers = get_tree().get_nodes_in_group(worker_group_name)
+	var current_ids: Dictionary = {}
+	for w in workers:
+		if w == null or not is_instance_valid(w):
+			continue
+		if not (w is Node2D):
+			continue
+		if not ("worker_mode" in w) or not w.worker_mode:
+			continue
+		var id = w.get_instance_id()
+		current_ids[id] = true
+		var pos = (w as Node2D).global_position
+		var storage: Node2D = null
+		if "worker_assigned_storage" in w and w.worker_assigned_storage != null and is_instance_valid(w.worker_assigned_storage):
+			if w.worker_assigned_storage is Node2D:
+				storage = w.worker_assigned_storage
+		elif "worker_storage_target" in w and w.worker_storage_target != null and is_instance_valid(w.worker_storage_target):
+			if w.worker_storage_target is Node2D:
+				storage = w.worker_storage_target
+		var current_dist = -1.0
+		if storage != null:
+			current_dist = pos.distance_to(storage.global_position)
+			worker_drift_status.append("worker id=" + str(id) + " dist=" + str(current_dist) + " over_max=" + str(current_dist > max(1.0, worker_spawn_max_allowed_distance)))
+		else:
+			worker_drift_status.append("worker id=" + str(id) + " dist=none over_max=false")
+		var entry = worker_drift_monitor.get(id, null)
+		if entry == null or not (entry is Dictionary):
+			var dist = 0.0
+			var storage_id = -1
+			if current_dist >= 0.0:
+				dist = current_dist
+				storage_id = storage.get_instance_id()
+			worker_drift_monitor[id] = {"pos": pos, "t": float(game_time_sec), "last_warn": -999.0, "dist": dist, "storage_id": storage_id}
+			continue
+		var last_t = float(entry.get("t", float(game_time_sec)))
+		var dt = float(game_time_sec) - last_t
+		if current_dist > max(1.0, worker_spawn_max_allowed_distance):
+			var last_warn_over = float(entry.get("last_warn", -999.0))
+			if float(game_time_sec) - last_warn_over >= worker_drift_warn_cooldown:
+				entry["last_warn"] = float(game_time_sec)
+				worker_drift_messages.append("drift id=" + str(id) + " reason=distance_over_max dist=" + str(current_dist) + " max=" + str(worker_spawn_max_allowed_distance) + " pos=" + str(pos))
+		if dt >= worker_drift_sample_min_time:
+			if storage != null:
+				var last_dist = float(entry.get("dist", pos.distance_to(storage.global_position)))
+				var dist_delta = abs(current_dist - last_dist)
+				var base_speed = worker_move_speed
+				if "move_speed" in w:
+					base_speed = float(w.move_speed)
+				var rate_limit = max(1.0, base_speed) * max(1.0, worker_drift_speed_multiplier)
+				var rate = dist_delta / max(0.001, dt)
+				var reason = ""
+				if dist_delta > max(1.0, worker_drift_distance_jump):
+					reason = "distance_jump"
+				elif rate > rate_limit:
+					reason = "distance_rate"
+				if reason != "":
+					var last_warn = float(entry.get("last_warn", -999.0))
+					if float(game_time_sec) - last_warn >= worker_drift_warn_cooldown:
+						entry["last_warn"] = float(game_time_sec)
+						worker_drift_messages.append("drift id=" + str(id) + " reason=" + reason + " dist_delta=" + str(dist_delta) + " rate=" + str(rate) + " limit=" + str(rate_limit) + " dist=" + str(current_dist) + " pos=" + str(pos))
+				entry["dist"] = current_dist
+				entry["storage_id"] = storage.get_instance_id()
+			entry["pos"] = pos
+			entry["t"] = float(game_time_sec)
+			worker_drift_monitor[id] = entry
+	var ids = worker_drift_monitor.keys()
+	for id in ids:
+		if not current_ids.has(id):
+			worker_drift_monitor.erase(id)
+
 func _spawn_storage() -> void:
 	if storage_node != null and is_instance_valid(storage_node):
 		return
@@ -824,7 +961,7 @@ func _spawn_storage() -> void:
 	elif spawn_layer:
 		var used_cells = spawn_layer.get_used_cells()
 		if not used_cells.is_empty():
-			base_position = spawn_layer.map_to_local(used_cells[0])
+			base_position = _cell_to_world_from_layer(used_cells[0], spawn_layer)
 	node.global_position = base_position + Vector2(world_rng.randf_range(-storage_spawn_radius, storage_spawn_radius), world_rng.randf_range(-storage_spawn_radius, storage_spawn_radius))
 	if objects_container:
 		objects_container.add_child(node)
@@ -846,7 +983,7 @@ func _position_player_at_spawn() -> void:
 		var used_cells = spawn_layer.get_used_cells()
 		if not used_cells.is_empty():
 			var center_index = int(round(float(used_cells.size() - 1) / 2.0))
-			target_position = spawn_layer.map_to_local(used_cells[center_index])
+			target_position = _cell_to_world_from_layer(used_cells[center_index], spawn_layer)
 	player.global_position = target_position
 
 func _pick_worker_spawn_position() -> Vector2:
@@ -857,18 +994,16 @@ func _pick_worker_spawn_position() -> Vector2:
 		var used_cells = spawn_layer.get_used_cells()
 		if not used_cells.is_empty():
 			var cell = used_cells[world_rng.randi_range(0, used_cells.size() - 1)]
-			return spawn_layer.map_to_local(cell)
+			return _cell_to_world_from_layer(cell, spawn_layer)
 	return Vector2.ZERO
 
 func spawn_archers() -> void:
 	# 生成弓箭手并设置漫游范围
-	var available_cells: Array[Vector2i] = sheep_spawn_layer.get_used_cells()
-	if use_noise_terrain and not deep_mountain_cells.is_empty():
-		available_cells = deep_mountain_cells
-	elif use_noise_terrain and not land_cells.is_empty():
-		available_cells = land_cells
+	var available_cells: Array[Vector2i] = defense_entry_cells
 	if available_cells.is_empty():
-		print("错误：SheepSpawnLayer 没有画任何格子！无法生成弓箭手。")
+		available_cells = defense_build_cells
+	if available_cells.is_empty():
+		print("错误：防守区没有可用格子！无法生成弓箭手。")
 		return
 		
 	if archer_scene == null:
@@ -888,7 +1023,7 @@ func spawn_archers() -> void:
 		if use_noise_terrain:
 			archer_instance.position = _cell_to_world(random_cell)
 		else:
-			archer_instance.position = sheep_spawn_layer.map_to_local(random_cell)
+			archer_instance.position = _cell_to_world_from_layer(random_cell, sheep_spawn_layer)
 		objects_container.add_child(archer_instance)
 		if archer_instance.has_method("setup_roam"):
 			var roam_layer = sheep_spawn_layer
@@ -910,11 +1045,13 @@ func _process(delta: float) -> void:
 			save_timer = max(1.0, save_auto_interval_sec)
 			_save_game()
 	_update_redwood_system(delta)
+	_update_lamb_preview()
 	_update_warehouse_hover_and_preview()
 	_apply_edge_scroll(delta)
 	_clamp_view_to_map()
 	_update_player_ground_check(delta)
 	_update_worker_spawn_monitor(delta)
+	_update_worker_drift_monitor(delta)
 	_update_input_debug(delta)
 	_update_tree_respawn(delta)
 	_update_rock_respawn(delta)
@@ -1204,6 +1341,14 @@ func _update_input_debug(delta: float) -> void:
 		"zoom_delta=" + str(last_zoom_delta),
 		"worker_monitor=" + str(worker_spawn_monitor.size())
 	]
+	if not worker_drift_status.is_empty():
+		data.append("drift_status_count=" + str(worker_drift_status.size()))
+		for msg in worker_drift_status:
+			data.append(msg)
+	if not worker_drift_messages.is_empty():
+		data.append("drift_count=" + str(worker_drift_messages.size()))
+		for msg in worker_drift_messages:
+			data.append(msg)
 	if placing_warehouse:
 		var cell = _world_to_cell(get_global_mouse_position())
 		var fail_reason = _get_warehouse_place_fail_reason(cell, moving_warehouse)
@@ -1349,8 +1494,12 @@ func _place_warehouse_at_cell(cell: Vector2i) -> void:
 	var gold_count = int(ui.inventory_data.get("gold", 0))
 	var meat_count = int(ui.inventory_data.get("meat", 0))
 	if wood_count < pending_warehouse_cost_wood or gold_count < pending_warehouse_cost_gold or meat_count < pending_warehouse_cost_meat:
+		has_pending_worker_spawn_origin = false
+		pending_worker_spawn_origin = Vector2.ZERO
 		return
 	if skill_points < pending_warehouse_cost_sp:
+		has_pending_worker_spawn_origin = false
+		pending_worker_spawn_origin = Vector2.ZERO
 		return
 	if free_warehouse_tokens > 0 and warehouse_count <= 0 and pending_warehouse_cost_wood == 0 and pending_warehouse_cost_gold == 0 and pending_warehouse_cost_meat == 0:
 		free_warehouse_tokens -= 1
@@ -1361,6 +1510,8 @@ func _place_warehouse_at_cell(cell: Vector2i) -> void:
 	ui.refresh_inventory_ui()
 	var warehouse_pos = _cell_to_world(cell)
 	var warehouse = _spawn_warehouse_at_position(warehouse_pos)
+	if warehouse_count <= 0:
+		worker_spawn_no_fade_once = true
 	warehouse_count += 1
 	pending_warehouse_cost_wood = 0
 	pending_warehouse_cost_gold = 0
@@ -1368,6 +1519,7 @@ func _place_warehouse_at_cell(cell: Vector2i) -> void:
 	pending_warehouse_cost_sp = 0
 	if warehouse != null:
 		_dispatch_workers_from_warehouse(warehouse, workers_per_warehouse)
+	worker_spawn_no_fade_once = false
 
 func _spawn_warehouse_at_position(world_pos: Vector2) -> Node2D:
 	if storage_texture == null:
@@ -1392,14 +1544,25 @@ func _dispatch_workers_from_warehouse(warehouse: Node2D, count: int) -> void:
 	if objects_container == null:
 		return
 	var base_position = warehouse.global_position
+	if has_pending_worker_spawn_origin:
+		base_position = pending_worker_spawn_origin
+		has_pending_worker_spawn_origin = false
+		pending_worker_spawn_origin = Vector2.ZERO
 	for i in range(max(0, count)):
 		var worker_instance = worker_scene.instantiate()
 		if worker_instance == null or not (worker_instance is Node2D):
 			continue
-		var exit_target = _pick_worker_exit_target_near(base_position)
-		var spawn_pos = exit_target
-		if not _is_respawn_position_clear(spawn_pos):
-			spawn_pos = base_position
+		if worker_spawn_no_fade_once:
+			if "worker_spawn_invisible_duration" in worker_instance:
+				worker_instance.worker_spawn_invisible_duration = 1.0
+			if "worker_spawn_fade_duration" in worker_instance:
+				worker_instance.worker_spawn_fade_duration = 1.0
+		var offset_index = float(i) - (float(max(0, count)) - 1.0) * 0.5
+		var desired_exit = base_position + Vector2(offset_index * 14.0, worker_exit_distance)
+		var exit_target = _snap_position_to_land(desired_exit, base_position, max(16.0, worker_exit_distance * 2.0))
+		if exit_target == base_position:
+			exit_target = _snap_position_to_land(base_position + Vector2(0.0, worker_exit_distance), base_position, worker_exit_distance * 2.0)
+		var spawn_pos = base_position
 		(worker_instance as Node2D).global_position = spawn_pos
 		_configure_worker_instance(worker_instance)
 		objects_container.add_child(worker_instance)
@@ -1410,7 +1573,7 @@ func _dispatch_workers_from_warehouse(warehouse: Node2D, count: int) -> void:
 		if "worker_assigned_storage" in worker_instance:
 			worker_instance.worker_assigned_storage = warehouse
 		if "worker_exit_active" in worker_instance:
-			worker_instance.worker_exit_active = false
+			worker_instance.worker_exit_active = true
 		if "worker_exit_target" in worker_instance:
 			worker_instance.worker_exit_target = exit_target
 		if "worker_wander_active" in worker_instance:
@@ -1418,6 +1581,21 @@ func _dispatch_workers_from_warehouse(warehouse: Node2D, count: int) -> void:
 		if "worker_wander_target" in worker_instance:
 			worker_instance.worker_wander_target = spawn_pos
 		_register_worker_spawn(worker_instance, base_position, warehouse)
+
+func _recall_workers_for_warehouse(warehouse: Node2D) -> int:
+	if warehouse == null or not is_instance_valid(warehouse):
+		return 0
+	var recalled = 0
+	var workers = get_tree().get_nodes_in_group(worker_group_name)
+	for w in workers:
+		if w == null or not is_instance_valid(w):
+			continue
+		if not ("worker_mode" in w) or not w.worker_mode:
+			continue
+		if "worker_assigned_storage" in w and w.worker_assigned_storage == warehouse:
+			w.queue_free()
+			recalled += 1
+	return recalled
 
 func _ensure_warehouse_preview() -> void:
 	if warehouse_preview != null and is_instance_valid(warehouse_preview):
@@ -1451,12 +1629,17 @@ func _cancel_warehouse_placement() -> void:
 		var sprite = moving_warehouse.get_node_or_null("Sprite2D") as Sprite2D
 		if sprite != null:
 			sprite.modulate = Color(1, 1, 1, 1)
+		if moving_warehouse_recalled_count > 0:
+			_dispatch_workers_from_warehouse(moving_warehouse, moving_warehouse_recalled_count)
+			moving_warehouse_recalled_count = 0
 	moving_warehouse = null
 	placing_warehouse = false
 	pending_warehouse_cost_wood = 0
 	pending_warehouse_cost_gold = 0
 	pending_warehouse_cost_meat = 0
 	pending_warehouse_cost_sp = 0
+	has_pending_worker_spawn_origin = false
+	pending_worker_spawn_origin = Vector2.ZERO
 	_clear_warehouse_preview()
 
 func request_plant_redwood_seed() -> void:
@@ -1464,6 +1647,8 @@ func request_plant_redwood_seed() -> void:
 		return
 	if not redwood_enabled:
 		return
+	placing_lamb = false
+	_clear_lamb_preview()
 	var ui = _get_interface()
 	if ui == null:
 		return
@@ -1485,32 +1670,13 @@ func request_release_lamb() -> void:
 		return
 	var count = int(ui.inventory_data.get("lamb", 0))
 	if count <= 0:
+		placing_lamb = false
+		_clear_lamb_preview()
 		return
-	ui.inventory_data["lamb"] = count - 1
-	ui.refresh_inventory_ui()
-	if sheep_scene == null:
-		return
-	var player = _get_player() as Node2D
-	if player == null:
-		return
-	var spawn_pos = player.global_position + Vector2(world_rng.randf_range(-lamb_release_spawn_radius, lamb_release_spawn_radius), world_rng.randf_range(-lamb_release_spawn_radius, lamb_release_spawn_radius))
-	var lamb_instance = sheep_scene.instantiate()
-	if lamb_instance == null:
-		return
-	if lamb_instance is Node2D:
-		(lamb_instance as Node2D).global_position = spawn_pos
-	objects_container.add_child(lamb_instance)
-	if lamb_instance.has_method("configure_released_lamb"):
-		lamb_instance.call("configure_released_lamb", lamb_release_mutate_time_sec, _get_sheep_mutation_chance())
-	if lamb_instance.has_signal("died"):
-		if not lamb_instance.died.is_connected(_on_sheep_died.bind(lamb_instance)):
-			lamb_instance.died.connect(_on_sheep_died.bind(lamb_instance))
-	if lamb_instance.has_method("setup_roam"):
-		var cell = _world_to_cell(spawn_pos)
-		var roam_layer = sheep_spawn_layer
-		if use_noise_terrain and ground_layer:
-			roam_layer = ground_layer
-		lamb_instance.call("setup_roam", roam_layer, cell, sheep_roam_cell_radius)
+	placing_redwood_seed = false
+	_clear_redwood_seed_preview()
+	placing_lamb = true
+	_ensure_lamb_preview()
 
 func _update_redwood_system(delta: float) -> void:
 	if redwood_enabled:
@@ -1564,6 +1730,122 @@ func _clear_redwood_seed_preview() -> void:
 func _cancel_redwood_seed_placement() -> void:
 	placing_redwood_seed = false
 	_clear_redwood_seed_preview()
+
+func _update_lamb_preview() -> void:
+	if not placing_lamb:
+		_clear_lamb_preview()
+		return
+	var mouse_world = get_global_mouse_position()
+	var cell = _world_to_cell(mouse_world)
+	var world_pos = _cell_to_world(cell)
+	var can_place = _can_place_lamb_at_cell(cell)
+	_ensure_lamb_preview()
+	if lamb_preview != null and is_instance_valid(lamb_preview):
+		lamb_preview.global_position = world_pos
+		if lamb_preview_sprite != null and is_instance_valid(lamb_preview_sprite):
+			lamb_preview_sprite.modulate = Color(0.9, 1.0, 0.9, 0.95) if can_place else Color(1.0, 0.55, 0.55, 0.95)
+
+func _ensure_lamb_preview() -> void:
+	if lamb_preview != null and is_instance_valid(lamb_preview):
+		lamb_preview.visible = true
+		return
+	lamb_preview = Node2D.new()
+	lamb_preview.name = "LambPreview"
+	lamb_preview.z_index = 96
+	var sprite = Sprite2D.new()
+	var sheep_texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Idle.png")
+	var frame_count = 6
+	var frame_width = sheep_texture.get_width() / float(frame_count)
+	var atlas = AtlasTexture.new()
+	atlas.atlas = sheep_texture
+	atlas.region = Rect2(0, 0, frame_width, sheep_texture.get_height())
+	sprite.texture = atlas
+	sprite.scale = Vector2(0.62, 0.62)
+	lamb_preview.add_child(sprite)
+	lamb_preview_sprite = sprite
+	if objects_container:
+		objects_container.add_child(lamb_preview)
+	else:
+		add_child(lamb_preview)
+
+func _clear_lamb_preview() -> void:
+	if lamb_preview != null and is_instance_valid(lamb_preview):
+		lamb_preview.queue_free()
+	lamb_preview = null
+	lamb_preview_sprite = null
+
+func _cancel_lamb_placement() -> void:
+	placing_lamb = false
+	_clear_lamb_preview()
+
+func _get_lamb_place_fail_reason(cell: Vector2i) -> String:
+	if not _is_grass_cell(cell):
+		return "不是可放置地形"
+	if _is_water_cell(cell):
+		return "水面不可放置"
+	var world_pos = _cell_to_world(cell)
+	var obstacles = get_tree().get_nodes_in_group("obstacle")
+	for obj in obstacles:
+		if not (obj is Node2D):
+			continue
+		if not is_instance_valid(obj):
+			continue
+		if obj.global_position.distance_to(world_pos) <= lamb_place_clear_radius:
+			return "附近有障碍物"
+	var storages = get_tree().get_nodes_in_group("storage")
+	for s in storages:
+		if not (s is Node2D):
+			continue
+		if not is_instance_valid(s):
+			continue
+		if s.global_position.distance_to(world_pos) <= lamb_place_clear_radius:
+			return "附近已有仓库"
+	var piles = get_tree().get_nodes_in_group("collection_pile")
+	for p in piles:
+		if not (p is Node2D):
+			continue
+		if not is_instance_valid(p):
+			continue
+		if p.global_position.distance_to(world_pos) <= lamb_place_clear_radius:
+			return "附近已有收集桩"
+	return ""
+
+func _can_place_lamb_at_cell(cell: Vector2i) -> bool:
+	return _get_lamb_place_fail_reason(cell) == ""
+
+func _place_lamb_at_cell(cell: Vector2i) -> void:
+	var ui = _get_interface()
+	if ui == null:
+		return
+	if not ("inventory_data" in ui):
+		return
+	var count = int(ui.inventory_data.get("lamb", 0))
+	if count <= 0:
+		return
+	if sheep_scene == null:
+		return
+	ui.inventory_data["lamb"] = count - 1
+	ui.refresh_inventory_ui()
+	var lamb_instance = sheep_scene.instantiate()
+	if lamb_instance == null:
+		return
+	var world_pos = _cell_to_world(cell)
+	if lamb_instance is Node2D:
+		(lamb_instance as Node2D).global_position = world_pos
+	if objects_container:
+		objects_container.add_child(lamb_instance)
+	else:
+		add_child(lamb_instance)
+	if lamb_instance.has_method("configure_released_lamb"):
+		lamb_instance.call("configure_released_lamb", lamb_release_mutate_time_sec, 1.0)
+	if lamb_instance.has_signal("died"):
+		if not lamb_instance.died.is_connected(_on_sheep_died.bind(lamb_instance)):
+			lamb_instance.died.connect(_on_sheep_died.bind(lamb_instance))
+	if lamb_instance.has_method("setup_roam"):
+		var roam_layer = sheep_spawn_layer
+		if use_noise_terrain and ground_layer:
+			roam_layer = ground_layer
+		lamb_instance.call("setup_roam", roam_layer, cell, sheep_roam_cell_radius)
 
 func _get_redwood_seed_place_fail_reason(cell: Vector2i) -> String:
 	if not redwood_enabled:
@@ -1667,7 +1949,7 @@ func _update_warehouse_hover_and_preview() -> void:
 	var mouse_world = get_global_mouse_position()
 	hovered_warehouse = null
 	var best = 28.0
-	if placing_redwood_seed:
+	if placing_redwood_seed or placing_lamb:
 		hovered_warehouse = null
 		return
 	if not placing_warehouse:
@@ -1868,27 +2150,55 @@ func try_buy_skill(skill_key: String) -> bool:
 	return true
 
 func _spawn_threat_wave() -> bool:
-	if archer_scene == null:
-		return false
 	var wave_count = _compute_next_wave_size()
 	if wave_count <= 0:
 		return false
+	var wave_index = waves_survived + 1
+	var composition = _compute_enemy_wave_composition(wave_count, wave_index)
+	var scale = _compute_enemy_stat_scale(wave_index)
 	last_wave_spawned_count = 0
-	for i in range(wave_count):
-		var ok = _spawn_archer_at_cell()
-		if ok:
-			last_wave_spawned_count += 1
+	last_wave_spawned_count += _spawn_enemy_batch(enemy_warrior_scene, int(composition.get("warrior", 0)), scale)
+	last_wave_spawned_count += _spawn_enemy_batch(enemy_lancer_scene, int(composition.get("lancer", 0)), scale)
+	last_wave_spawned_count += _spawn_enemy_batch(enemy_archer_scene, int(composition.get("archer", 0)), scale)
+	last_wave_spawned_count += _spawn_enemy_batch(enemy_monk_scene, int(composition.get("monk", 0)), scale)
 	if last_wave_spawned_count <= 0:
 		return false
 	waves_survived += 1
 	return true
 
-func _spawn_archer_at_cell() -> bool:
-	var available_cells: Array[Vector2i] = deep_mountain_cells
-	if available_cells.is_empty():
-		available_cells = land_cells
-	if available_cells.is_empty():
+func _spawn_enemy_batch(scene: PackedScene, count: int, scale: Dictionary) -> int:
+	if scene == null or count <= 0:
+		return 0
+	var spawned = 0
+	for i in range(count):
+		if _spawn_enemy_at_cell(scene, scale):
+			spawned += 1
+	return spawned
+
+func _spawn_enemy_at_cell(scene: PackedScene, scale: Dictionary) -> bool:
+	var cell = _pick_enemy_spawn_cell()
+	if cell == null:
 		return false
+	var enemy_instance = scene.instantiate()
+	if enemy_instance == null:
+		return false
+	_apply_enemy_scale(enemy_instance, scale)
+	enemy_instance.position = _cell_to_world(cell)
+	objects_container.add_child(enemy_instance)
+	_ensure_enemy_group(enemy_instance)
+	if enemy_instance.has_method("setup_roam"):
+		var roam_layer = sheep_spawn_layer
+		if use_noise_terrain and ground_layer:
+			roam_layer = ground_layer
+		enemy_instance.setup_roam(roam_layer, cell, archer_roam_cell_radius)
+	return true
+
+func _pick_enemy_spawn_cell() -> Variant:
+	var available_cells: Array[Vector2i] = defense_entry_cells
+	if available_cells.is_empty():
+		available_cells = defense_build_cells
+	if available_cells.is_empty():
+		return null
 	var random_cell := Vector2i.ZERO
 	var found_cell = false
 	var tries = min(available_cells.size(), 48)
@@ -1900,16 +2210,59 @@ func _spawn_archer_at_cell() -> bool:
 		found_cell = true
 		break
 	if not found_cell:
-		return false
-	var archer_instance = archer_scene.instantiate()
-	archer_instance.position = _cell_to_world(random_cell)
-	objects_container.add_child(archer_instance)
-	if archer_instance.has_method("setup_roam"):
-		var roam_layer = sheep_spawn_layer
-		if use_noise_terrain and ground_layer:
-			roam_layer = ground_layer
-		archer_instance.setup_roam(roam_layer, random_cell, archer_roam_cell_radius)
-	return true
+		return null
+	return random_cell
+
+func _compute_enemy_wave_composition(wave_count: int, wave_index: int) -> Dictionary:
+	var lancer_ratio = clamp(enemy_lancer_ratio_base + enemy_lancer_ratio_per_wave * float(wave_index - 1), 0.0, 0.35)
+	var archer_ratio = clamp(enemy_archer_ratio_base + enemy_archer_ratio_per_wave * float(wave_index - 1), 0.0, 0.35)
+	var monk_ratio = 0.0
+	if wave_index >= enemy_monk_unlock_wave:
+		monk_ratio = clamp(enemy_monk_ratio_base + enemy_monk_ratio_per_wave * float(wave_index - enemy_monk_unlock_wave), 0.0, 0.2)
+	var warrior_ratio = max(0.0, 1.0 - lancer_ratio - archer_ratio - monk_ratio)
+	var lancer_count = int(floor(wave_count * lancer_ratio))
+	var archer_count = int(floor(wave_count * archer_ratio))
+	var monk_count = int(floor(wave_count * monk_ratio))
+	var warrior_count = max(0, wave_count - lancer_count - archer_count - monk_count)
+	return {
+		"warrior": warrior_count,
+		"lancer": lancer_count,
+		"archer": archer_count,
+		"monk": monk_count
+	}
+
+func _compute_enemy_stat_scale(wave_index: int) -> Dictionary:
+	var hp_steps = 0
+	if enemy_hp_scale_every > 0:
+		hp_steps = int((wave_index - 1) / enemy_hp_scale_every)
+	var dmg_steps = 0
+	if enemy_damage_scale_every > 0:
+		dmg_steps = int((wave_index - 1) / enemy_damage_scale_every)
+	return {
+		"hp": 1.0 + enemy_hp_scale_step * float(hp_steps),
+		"damage": 1.0 + enemy_damage_scale_step * float(dmg_steps)
+	}
+
+func _apply_enemy_scale(enemy_instance: Node, scale: Dictionary) -> void:
+	if enemy_instance == null:
+		return
+	if "max_health" in enemy_instance:
+		var base_max = int(enemy_instance.get("max_health"))
+		enemy_instance.set("max_health", int(round(base_max * float(scale.get("hp", 1.0)))))
+	if "damage" in enemy_instance:
+		var base_damage = int(enemy_instance.get("damage"))
+		enemy_instance.set("damage", int(round(base_damage * float(scale.get("damage", 1.0)))))
+	if "heal_amount" in enemy_instance:
+		var base_heal = int(enemy_instance.get("heal_amount"))
+		enemy_instance.set("heal_amount", int(round(base_heal * float(scale.get("damage", 1.0)))))
+
+func _ensure_enemy_group(enemy_instance: Node) -> void:
+	if enemy_instance == null:
+		return
+	if enemy_instance.is_in_group("ally"):
+		enemy_instance.remove_from_group("ally")
+	if not enemy_instance.is_in_group("enemy"):
+		enemy_instance.add_to_group("enemy")
 
 func _try_build_collection_pile() -> void:
 	if not collection_pile_enabled:
@@ -1978,6 +2331,8 @@ func _generate_noise_terrain() -> void:
 	rock_cells.clear()
 	gold_cells.clear()
 	deep_mountain_cells.clear()
+	defense_entry_cells.clear()
+	defense_build_cells.clear()
 	var bounds = _get_map_bounds()
 	_clear_terrain_layers()
 	var land_set: Dictionary = {}
@@ -2038,6 +2393,226 @@ func _generate_noise_terrain() -> void:
 	tree_cells = _cap_cells(tree_cells, max_tree_count)
 	rock_cells = _cap_cells(rock_cells, max_rock_count)
 	gold_cells = _cap_cells(gold_cells, max_gold_count)
+	_apply_defense_zone(bounds)
+	_refresh_region_debug_overlay(bounds)
+
+func _apply_defense_zone(bounds: Rect2i) -> void:
+	if not use_noise_terrain:
+		return
+	if bounds.size.y <= 0:
+		return
+	var screen_tiles = _get_screen_tile_size()
+	var bottom_y = bounds.position.y + bounds.size.y - 1
+	var corridor_center_x = bounds.position.x + int(round(bounds.size.x / 2.0))
+	var corridor_half_width = max(1, int(round(screen_tiles.x / 10.0)))
+	var corridor_min_x = max(bounds.position.x, corridor_center_x - corridor_half_width)
+	var corridor_max_x = min(bounds.position.x + bounds.size.x - 1, corridor_center_x + corridor_half_width)
+	var mid_band_height = 4
+	var defense_height = max(screen_tiles.y, int(round(bounds.size.y * 0.35)))
+	var defense_start_y = max(bounds.position.y, bottom_y - defense_height + 1)
+	var mid_start_y = max(bounds.position.y, defense_start_y - mid_band_height)
+	var mid_end_y = defense_start_y - 1
+	var top_start_y = bounds.position.y
+	var top_end_y = mid_start_y - 1
+	for x in range(bounds.position.x, bounds.position.x + bounds.size.x):
+		for y in range(top_start_y, top_end_y + 1):
+			var cell_top = Vector2i(x, y)
+			_set_ground_cell(cell_top, ground_atlas)
+			if water_layer:
+				water_layer.erase_cell(cell_top)
+			if water_foam_layer:
+				water_foam_layer.erase_cell(cell_top)
+			land_cells.erase(cell_top)
+			land_cells.append(cell_top)
+	for x in range(bounds.position.x, bounds.position.x + bounds.size.x):
+		for y in range(mid_start_y, mid_end_y + 1):
+			var cell_mid = Vector2i(x, y)
+			var in_corridor_mid = x >= corridor_min_x and x <= corridor_max_x
+			if in_corridor_mid:
+				_set_ground_cell(cell_mid, ground_atlas)
+				if water_layer:
+					water_layer.erase_cell(cell_mid)
+				if water_foam_layer:
+					water_foam_layer.erase_cell(cell_mid)
+				tree_cells.erase(cell_mid)
+				rock_cells.erase(cell_mid)
+				gold_cells.erase(cell_mid)
+				deep_mountain_cells.erase(cell_mid)
+				land_cells.erase(cell_mid)
+				land_cells.append(cell_mid)
+			else:
+				_set_water_cell(cell_mid)
+				if ground_layer:
+					ground_layer.erase_cell(cell_mid)
+				if ground_layer_2:
+					ground_layer_2.erase_cell(cell_mid)
+				if water_foam_layer:
+					water_foam_layer.erase_cell(cell_mid)
+				tree_cells.erase(cell_mid)
+				rock_cells.erase(cell_mid)
+				gold_cells.erase(cell_mid)
+				deep_mountain_cells.erase(cell_mid)
+				land_cells.erase(cell_mid)
+	for x in range(bounds.position.x, bounds.position.x + bounds.size.x):
+		for y in range(defense_start_y, bottom_y + 1):
+			var cell_def = Vector2i(x, y)
+			_set_ground_cell(cell_def, ground_atlas)
+			if water_layer:
+				water_layer.erase_cell(cell_def)
+			if water_foam_layer:
+				water_foam_layer.erase_cell(cell_def)
+			tree_cells.erase(cell_def)
+			rock_cells.erase(cell_def)
+			gold_cells.erase(cell_def)
+			deep_mountain_cells.erase(cell_def)
+			land_cells.erase(cell_def)
+			land_cells.append(cell_def)
+			defense_build_cells.append(cell_def)
+			if y == bottom_y and x >= corridor_min_x and x <= corridor_max_x:
+				defense_entry_cells.append(cell_def)
+	var land_set: Dictionary = {}
+	for cell in land_cells:
+		land_set[cell] = true
+	var min_x = bounds.position.x
+	var max_x = bounds.position.x + bounds.size.x - 1
+	var min_y = bounds.position.y
+	var max_y = bounds.position.y + bounds.size.y - 1
+	for x in range(min_x, max_x + 1):
+		var cell_top_border = Vector2i(x, min_y)
+		_set_water_cell(cell_top_border)
+		if ground_layer:
+			ground_layer.erase_cell(cell_top_border)
+		if ground_layer_2:
+			ground_layer_2.erase_cell(cell_top_border)
+		if water_foam_layer:
+			water_foam_layer.erase_cell(cell_top_border)
+		land_set.erase(cell_top_border)
+		defense_build_cells.erase(cell_top_border)
+		defense_entry_cells.erase(cell_top_border)
+		var cell_bottom_border = Vector2i(x, max_y)
+		_set_water_cell(cell_bottom_border)
+		if ground_layer:
+			ground_layer.erase_cell(cell_bottom_border)
+		if ground_layer_2:
+			ground_layer_2.erase_cell(cell_bottom_border)
+		if water_foam_layer:
+			water_foam_layer.erase_cell(cell_bottom_border)
+		land_set.erase(cell_bottom_border)
+		defense_build_cells.erase(cell_bottom_border)
+		defense_entry_cells.erase(cell_bottom_border)
+	for y in range(min_y, max_y + 1):
+		var cell_left_border = Vector2i(min_x, y)
+		_set_water_cell(cell_left_border)
+		if ground_layer:
+			ground_layer.erase_cell(cell_left_border)
+		if ground_layer_2:
+			ground_layer_2.erase_cell(cell_left_border)
+		if water_foam_layer:
+			water_foam_layer.erase_cell(cell_left_border)
+		land_set.erase(cell_left_border)
+		defense_build_cells.erase(cell_left_border)
+		defense_entry_cells.erase(cell_left_border)
+		var cell_right_border = Vector2i(max_x, y)
+		_set_water_cell(cell_right_border)
+		if ground_layer:
+			ground_layer.erase_cell(cell_right_border)
+		if ground_layer_2:
+			ground_layer_2.erase_cell(cell_right_border)
+		if water_foam_layer:
+			water_foam_layer.erase_cell(cell_right_border)
+		land_set.erase(cell_right_border)
+		defense_build_cells.erase(cell_right_border)
+		defense_entry_cells.erase(cell_right_border)
+	var side_water_width = max(1, int(round(bounds.size.x * 0.08)))
+	for x in range(min_x, min_x + side_water_width):
+		for y in range(min_y, max_y + 1):
+			var cell_left_channel = Vector2i(x, y)
+			_set_water_cell(cell_left_channel)
+			if ground_layer:
+				ground_layer.erase_cell(cell_left_channel)
+			if ground_layer_2:
+				ground_layer_2.erase_cell(cell_left_channel)
+			if water_foam_layer:
+				water_foam_layer.erase_cell(cell_left_channel)
+			land_set.erase(cell_left_channel)
+			defense_build_cells.erase(cell_left_channel)
+			defense_entry_cells.erase(cell_left_channel)
+	for x in range(max_x - side_water_width + 1, max_x + 1):
+		for y in range(min_y, max_y + 1):
+			var cell_right_channel = Vector2i(x, y)
+			_set_water_cell(cell_right_channel)
+			if ground_layer:
+				ground_layer.erase_cell(cell_right_channel)
+			if ground_layer_2:
+				ground_layer_2.erase_cell(cell_right_channel)
+			if water_foam_layer:
+				water_foam_layer.erase_cell(cell_right_channel)
+			land_set.erase(cell_right_channel)
+			defense_build_cells.erase(cell_right_channel)
+			defense_entry_cells.erase(cell_right_channel)
+	land_cells.clear()
+	for cell in land_set.keys():
+		land_cells.append(cell)
+	_apply_ground_autotile(land_set)
+
+func is_defense_build_cell(cell: Vector2i) -> bool:
+	return defense_build_cells.has(cell)
+
+func is_defense_entry_cell(cell: Vector2i) -> bool:
+	return defense_entry_cells.has(cell)
+
+func _refresh_region_debug_overlay(bounds: Rect2i) -> void:
+	if region_debug_overlay != null and is_instance_valid(region_debug_overlay):
+		region_debug_overlay.queue_free()
+		region_debug_overlay = null
+	var tile_size = Vector2(64.0, 64.0)
+	if ground_layer and ground_layer.tile_set:
+		tile_size = Vector2(ground_layer.tile_set.tile_size)
+	var screen_tiles = _get_screen_tile_size()
+	var bottom_y = bounds.position.y + bounds.size.y - 1
+	var corridor_center_x = bounds.position.x + int(round(bounds.size.x / 2.0))
+	var corridor_half_width = max(1, int(round(screen_tiles.x / 10.0)))
+	var corridor_min_x = max(bounds.position.x, corridor_center_x - corridor_half_width)
+	var corridor_max_x = min(bounds.position.x + bounds.size.x - 1, corridor_center_x + corridor_half_width)
+	var mid_band_height = 4
+	var defense_height = max(screen_tiles.y, int(round(bounds.size.y * 0.35)))
+	var defense_start_y = max(bounds.position.y, bottom_y - defense_height + 1)
+	var mid_start_y = max(bounds.position.y, defense_start_y - mid_band_height)
+	var mid_end_y = defense_start_y - 1
+	var top_start_y = bounds.position.y
+	var top_end_y = mid_start_y - 1
+	region_debug_overlay = Node2D.new()
+	region_debug_overlay.name = "RegionDebug"
+	add_child(region_debug_overlay)
+	var x_min = bounds.position.x
+	var x_max = bounds.position.x + bounds.size.x - 1
+	var top_poly = Polygon2D.new()
+	top_poly.color = Color(0.2, 0.8, 0.2, 0.22)
+	top_poly.polygon = _build_region_polygon(x_min, x_max, top_start_y, top_end_y, tile_size)
+	region_debug_overlay.add_child(top_poly)
+	var mid_poly = Polygon2D.new()
+	mid_poly.color = Color(0.2, 0.4, 0.9, 0.22)
+	mid_poly.polygon = _build_region_polygon(x_min, x_max, mid_start_y, mid_end_y, tile_size)
+	region_debug_overlay.add_child(mid_poly)
+	var def_poly = Polygon2D.new()
+	def_poly.color = Color(0.9, 0.3, 0.3, 0.22)
+	def_poly.polygon = _build_region_polygon(x_min, x_max, defense_start_y, bottom_y, tile_size)
+	region_debug_overlay.add_child(def_poly)
+
+func _build_region_polygon(x_min: int, x_max: int, y_min: int, y_max: int, tile_size: Vector2) -> PackedVector2Array:
+	var points: PackedVector2Array = PackedVector2Array()
+	var half = tile_size * 0.5
+	var tl_center = _cell_to_world(Vector2i(x_min, y_min))
+	var br_center = _cell_to_world(Vector2i(x_max, y_max))
+	var tl = tl_center - half
+	var tr = Vector2(br_center.x + half.x, tl.y)
+	var br = br_center + half
+	var bl = Vector2(tl.x, br.y)
+	points.append(tl)
+	points.append(tr)
+	points.append(br)
+	points.append(bl)
+	return points
 
 func _get_screen_tile_size() -> Vector2i:
 	var view_size = get_viewport().get_visible_rect().size
@@ -2460,6 +3035,11 @@ func _mark_occupied(cell: Vector2i, occupied: Dictionary) -> void:
 	occupied[cell + Vector2i(1, -1)] = true
 	occupied[cell + Vector2i(-1, 1)] = true
 	occupied[cell + Vector2i(-1, -1)] = true
+
+func _cell_to_world_from_layer(cell: Vector2i, layer: TileMapLayer) -> Vector2:
+	if layer != null:
+		return layer.map_to_local(cell)
+	return _cell_to_world(cell)
 
 func _cell_to_world(cell: Vector2i) -> Vector2:
 	var layer = _get_primary_map_layer()

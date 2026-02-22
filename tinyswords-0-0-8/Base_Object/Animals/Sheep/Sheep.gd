@@ -30,6 +30,9 @@ signal died(world_position: Vector2)
 @export var worker_mode: bool = false
 @export var worker_scan_interval: float = 0.6
 @export var worker_gather_radius: float = 260.0
+@export var worker_gather_radius_max: float = 900.0
+@export var worker_gather_expand_step: float = 120.0
+@export var worker_gather_expand_interval: float = 6.0
 @export var worker_harvest_range: float = 18.0
 @export var worker_harvest_damage: int = 1
 @export var worker_harvest_time: float = 0.6
@@ -59,6 +62,8 @@ signal died(world_position: Vector2)
 @export var logistics_pickup_radius: float = 220.0
 @export var logistics_drop_radius: float = 18.0
 @export var logistics_group: StringName = &"sheep"
+@export var worker_spawn_invisible_duration: float = 2.0
+@export var worker_spawn_fade_duration: float = 1.0
 # 上面都是可在编辑器中调整的参数，包括移动范围、动画速度和掉落
 
 @onready var anim: AnimatedSprite2D = $AnimatedSprite2D
@@ -88,6 +93,8 @@ var worker_target_resource: Node2D
 var worker_target_item: Node2D
 var worker_harvest_timer: float = 0.0
 var worker_scan_timer: float = 0.0
+var worker_gather_radius_current: float = 0.0
+var worker_expand_timer: float = 0.0
 var worker_carry_item_type: String = ""
 var worker_carry_count: int = 0
 var worker_storage_target: Node2D
@@ -101,6 +108,7 @@ var worker_nav_last_pos: Vector2 = Vector2.ZERO
 var worker_nav_stuck_timer: float = 0.0
 var worker_nav_detour_target: Vector2 = Vector2.ZERO
 var worker_nav_detour_active: bool = false
+var worker_spawn_elapsed: float = 0.0
 var is_baby: bool = false
 var is_mutant: bool = false
 var mutate_timer: float = 0.0
@@ -128,12 +136,46 @@ func _ready() -> void:
 	if worker_mode and is_in_group(&"sheep"):
 		remove_from_group(&"sheep")
 	base_move_speed = move_speed
+	worker_spawn_elapsed = 0.0
 	home_position = global_position
+	worker_gather_radius_current = worker_gather_radius
+	worker_expand_timer = worker_gather_expand_interval
 	_build_animations()
 	_enter_idle()
 	_apply_variant_visuals()
 	_update_carry_visual()
 	_enable_pickup_mode_if_needed()
+	if worker_mode:
+		_set_visual_alpha(0.0)
+
+func _set_visual_alpha(alpha: float) -> void:
+	var a = clamp(alpha, 0.0, 1.0)
+	if anim:
+		var c = anim.modulate
+		c.a = a
+		anim.modulate = c
+	if carry_sprite:
+		var c2 = carry_sprite.modulate
+		c2.a = a
+		carry_sprite.modulate = c2
+	if carry_label:
+		var c3 = carry_label.modulate
+		c3.a = a
+		carry_label.modulate = c3
+
+func _update_spawn_visibility(delta: float) -> void:
+	if not worker_mode:
+		return
+	worker_spawn_elapsed += delta
+	var alpha = 1.0
+	if worker_spawn_elapsed < worker_spawn_invisible_duration:
+		alpha = 0.0
+	elif worker_spawn_elapsed < worker_spawn_invisible_duration + worker_spawn_fade_duration:
+		var t = (worker_spawn_elapsed - worker_spawn_invisible_duration) / max(0.001, worker_spawn_fade_duration)
+		alpha = clamp(t, 0.0, 1.0)
+	else:
+		alpha = 1.0
+	_set_visual_alpha(alpha)
 
 func _physics_process(delta: float) -> void:
 	if mutate_timer > 0.0:
@@ -152,6 +194,7 @@ func _physics_process(delta: float) -> void:
 		if boost_timer <= 0.0:
 			boost_timer = 0.0
 			boost_multiplier = 1.0
+	_update_spawn_visibility(delta)
 	if worker_mode:
 		_update_worker(delta)
 		return
@@ -178,6 +221,8 @@ func _physics_process(delta: float) -> void:
 
 func take_damage(amount: int) -> void:
 	# 受击时扣血并播放缩放特效
+	if is_baby:
+		return
 	health -= amount
 	if anim:
 		if hit_tween and hit_tween.is_running():
@@ -326,7 +371,8 @@ func _die() -> void:
 			if lamb_instance.has_method("setup_as_pickup_lamb"):
 				lamb_instance.call("setup_as_pickup_lamb")
 			if lamb_instance is Node2D:
-				(lamb_instance as Node2D).global_position = global_position + Vector2(randf_range(-10.0, 10.0), randf_range(-10.0, 10.0))
+				var lamb_pos = _snap_to_land(global_position + Vector2(randf_range(-10.0, 10.0), randf_range(-10.0, 10.0)), global_position, 28.0)
+				(lamb_instance as Node2D).global_position = lamb_pos
 			get_parent().call_deferred("add_child", lamb_instance)
 		queue_free()
 		return
@@ -342,7 +388,8 @@ func _die() -> void:
 				if drop_instance.has_method("_refresh_texture"):
 					drop_instance.call_deferred("_refresh_texture")
 				var offset = Vector2(randf_range(-10.0, 10.0), randf_range(-10.0, 10.0))
-				drop_instance.set_deferred("global_position", global_position + offset)
+				var drop_pos = _snap_to_land(global_position + offset, global_position, 28.0)
+				drop_instance.set_deferred("global_position", drop_pos)
 	queue_free()
 
 func setup_as_pickup_lamb() -> void:
@@ -352,17 +399,22 @@ func setup_as_pickup_lamb() -> void:
 	logistics_enabled = false
 	worker_mode = false
 	is_baby = true
-	is_mutant = false
+	is_mutant = true
 	mutate_timer = 0.0
 	health = 1
 	drop_item_scene = null
 	drop_item_type = ""
+	_apply_variant_visuals()
+	_enable_pickup_mode_if_needed()
 
 func configure_released_lamb(time_to_mutate_sec: float, mutation_chance: float = 0.0) -> void:
 	is_baby = true
-	is_mutant = false
+	is_mutant = mutation_chance >= 1.0
 	mutate_timer = max(0.0, time_to_mutate_sec)
 	released_mutation_chance = clamp(mutation_chance, 0.0, 1.0)
+	if is_mutant:
+		drop_item_type = "red_meat"
+		health = max(health, 5)
 	_apply_variant_visuals()
 
 func set_mutant(enabled: bool) -> void:
@@ -382,7 +434,7 @@ func _apply_variant_visuals() -> void:
 			anim.modulate = Color(1.0, 0.35, 0.35, 1.0)
 		else:
 			anim.modulate = Color(1, 1, 1, 1)
-	if is_baby and not is_mutant:
+	if is_baby:
 		scale = Vector2(0.62, 0.62)
 	elif is_mutant:
 		scale = Vector2(1.0, 1.0)
@@ -552,8 +604,10 @@ func _update_worker(delta: float) -> void:
 		return
 	if worker_scan_timer <= 0.0:
 		worker_scan_timer = worker_scan_interval
+		var found_target = false
 		var item_candidate = _find_nearest_pickup()
 		if item_candidate != null and is_instance_valid(item_candidate):
+			found_target = true
 			if worker_target_item == null or not is_instance_valid(worker_target_item):
 				worker_target_item = item_candidate
 			else:
@@ -563,6 +617,7 @@ func _update_worker(delta: float) -> void:
 					worker_target_item = item_candidate
 		var resource_candidate = _find_nearest_resource()
 		if resource_candidate != null and is_instance_valid(resource_candidate):
+			found_target = true
 			if worker_target_resource == null or not is_instance_valid(worker_target_resource):
 				worker_target_resource = resource_candidate
 			else:
@@ -570,6 +625,14 @@ func _update_worker(delta: float) -> void:
 				var candidate_res_dist = global_position.distance_to(resource_candidate.global_position)
 				if candidate_res_dist < current_res_dist:
 					worker_target_resource = resource_candidate
+		if found_target:
+			worker_expand_timer = worker_gather_expand_interval
+		else:
+			worker_expand_timer -= max(0.1, worker_scan_interval)
+			if worker_expand_timer <= 0.0:
+				worker_expand_timer = worker_gather_expand_interval
+				var current_radius = max(worker_gather_radius, worker_gather_radius_current)
+				worker_gather_radius_current = min(worker_gather_radius_max, current_radius + worker_gather_expand_step)
 	if worker_target_item != null:
 		worker_wander_active = false
 		if _worker_move_to_position(worker_target_item.global_position, worker_pickup_range):
@@ -599,8 +662,13 @@ func _update_worker(delta: float) -> void:
 	else:
 		worker_harvest_timer = worker_harvest_time
 
+func _get_current_gather_radius() -> float:
+	if worker_gather_radius_current <= 0.0:
+		return max(0.0, worker_gather_radius)
+	return max(worker_gather_radius, worker_gather_radius_current)
+
 func _find_nearest_resource() -> Node2D:
-	return _find_nearest_resource_with_radius(worker_gather_radius)
+	return _find_nearest_resource_with_radius(_get_current_gather_radius())
 
 func _find_nearest_resource_with_radius(radius: float) -> Node2D:
 	var nearest: Node2D = null
@@ -650,15 +718,15 @@ func _find_nearest_resource_with_radius(radius: float) -> Node2D:
 func _find_nearest_pickup() -> Node2D:
 	var items = get_tree().get_nodes_in_group(&"pickup_item")
 	var nearest: Node2D = null
-	var best_dist = worker_gather_radius
+	var best_dist = _get_current_gather_radius()
 	for item in items:
 		if not (item is Node2D):
 			continue
 		if not is_instance_valid(item):
 			continue
-		if not _is_within_home_radius(item.global_position):
-			continue
 		var d = global_position.distance_to(item.global_position)
+		if not _is_within_home_radius(item.global_position) and d > worker_pickup_range * 2.0:
+			continue
 		if d <= best_dist:
 			best_dist = d
 			nearest = item
@@ -851,6 +919,12 @@ func _get_detour_target(goal_position: Vector2) -> Vector2:
 func _worker_move_to_position(target_pos: Vector2, reach_distance: float) -> bool:
 	var goal_position = target_pos
 	if worker_nav_detour_active:
+		if global_position.distance_to(goal_position) <= reach_distance:
+			worker_nav_detour_active = false
+			worker_nav_stuck_timer = 0.0
+			worker_nav_last_pos = global_position
+			velocity = Vector2.ZERO
+			return true
 		var detour_to = worker_nav_detour_target - global_position
 		var detour_reach = min(reach_distance, 6.0)
 		if detour_to.length() <= detour_reach:
@@ -880,15 +954,11 @@ func _worker_move_to_position(target_pos: Vector2, reach_distance: float) -> boo
 	worker_nav_last_pos = global_position
 	if worker_nav_stuck_timer >= worker_stuck_time:
 		worker_nav_stuck_timer = 0.0
-		var detour_target = _get_detour_target(goal_position)
-		if detour_target == Vector2.ZERO:
-			var dir = to_target.normalized()
-			var side = Vector2(-dir.y, dir.x)
-			if randf() < 0.5:
-				side = -side
-			detour_target = global_position + side * worker_detour_distance
-		worker_nav_detour_target = detour_target
-		worker_nav_detour_active = true
+		if _is_path_blocked(global_position, goal_position):
+			var detour_target = _get_detour_target(goal_position)
+			if detour_target != Vector2.ZERO:
+				worker_nav_detour_target = detour_target
+				worker_nav_detour_active = true
 	return false
 
 func _worker_is_carrying() -> bool:
@@ -975,7 +1045,7 @@ func _is_world_pos_on_land(world_pos: Vector2) -> bool:
 	return true
 
 func _is_within_home_radius(world_pos: Vector2) -> bool:
-	var radius = max(worker_wander_radius, worker_gather_radius)
+	var radius = max(worker_wander_radius, _get_current_gather_radius())
 	if radius <= 0.0:
 		return true
 	return home_position.distance_to(world_pos) <= radius

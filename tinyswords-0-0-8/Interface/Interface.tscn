@@ -13,6 +13,10 @@
 [ext_resource type="PackedScene" uid="uid://cwrhw06guqefk" path="res://Interface/InventorySlot.tscn" id="7_o153u"]
 [ext_resource type="Texture2D" uid="uid://c4umkg3tindvx" path="res://Interface/Icons/Tool_04.png" id="7_vaal7"]
 [ext_resource type="PackedScene" path="res://Base_Object/Enemies/Archer/Archer.tscn" id="8_archer"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/RedWarrior.tscn" id="8_red_warrior"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/RedLancer.tscn" id="9_red_lancer"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/RedArcher.tscn" id="9_red_archer"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/RedMonk.tscn" id="9_red_monk"]
 [ext_resource type="PackedScene" uid="uid://cf1p5y0j3g35a" path="res://Base_Object/Animals/Sheep/Sheep.tscn" id="8_sheep"]
 [ext_resource type="PackedScene" uid="uid://bitcn8g41e8s2" path="res://Terrain/Terrain.tscn" id="9_jwu1v"]
 [ext_resource type="FontFile" uid="uid://ckt0umhc75sre" path="res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf" id="10_8ua86"]
@@ -74,6 +78,10 @@ script = ExtResource("1_vaal7")
 object_scenes = Array[PackedScene]([ExtResource("2_vaal7"), ExtResource("3_7a7m0")])
 sheep_scene = ExtResource("8_sheep")
 archer_scene = ExtResource("8_archer")
+enemy_warrior_scene = ExtResource("8_red_warrior")
+enemy_lancer_scene = ExtResource("9_red_lancer")
+enemy_archer_scene = ExtResource("9_red_archer")
+enemy_monk_scene = ExtResource("9_red_monk")
 
 [node name="Terrain" parent="." unique_id=94221036 instance=ExtResource("9_jwu1v")]
 

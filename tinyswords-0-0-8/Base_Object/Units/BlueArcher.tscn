@@ -1,0 +1,25 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://Base_Object/Units/BlueArcher.gd" id="1"]
+[ext_resource type="Texture2D" path="res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Archer/Archer_Idle.png" id="2"]
+[ext_resource type="Texture2D" path="res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Archer/Archer_Run.png" id="3"]
+[ext_resource type="Texture2D" path="res://Tiny Swords/Tiny Swords (Free Pack)/Units/Blue Units/Archer/Archer_Shoot.png" id="4"]
+[ext_resource type="PackedScene" path="res://Base_Object/Enemies/Archer/Arrow.tscn" id="5"]
+
+[sub_resource type="CircleShape2D" id="1"]
+radius = 8.0
+
+[node name="BlueArcher" type="CharacterBody2D"]
+script = ExtResource("1")
+idle_texture = ExtResource("2")
+move_texture = ExtResource("3")
+shoot_texture = ExtResource("4")
+arrow_scene = ExtResource("5")
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -8)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 4)
+shape = SubResource("1")
+

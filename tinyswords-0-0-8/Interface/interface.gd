@@ -61,10 +61,12 @@ var save_load_tween: Tween
 # slot_scene 是背包格子实例的预制体
 
 # 字典：教 UI 如何将 "wood" 映射成对应的图片
+@onready var lamb_icon: Texture2D = _build_lamb_icon()
 @onready var item_icons: Dictionary = {
 	"wood": preload("res://Base_Object/Wood_Resource.png"), 
 	"gold": preload("res://Base_Object/Gold_Resource.png"),
-	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png")
+	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png"),
+	"lamb": lamb_icon
 }
 # 用物品类型字符串映射到图标贴图
 var consume_fx_defs: Array[Dictionary] = [
@@ -123,6 +125,15 @@ func _ready() -> void:
 		save_button.visible = false
 		save_button.disabled = true
 	call_deferred("_sync_player_health")
+
+func _build_lamb_icon() -> Texture2D:
+	var texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Idle.png")
+	var frame_count = 6
+	var frame_width = texture.get_width() / float(frame_count)
+	var atlas = AtlasTexture.new()
+	atlas.atlas = texture
+	atlas.region = Rect2(0, 0, frame_width, texture.get_height())
+	return atlas
 
 func _unhandled_input(event: InputEvent) -> void:
 	if end_overlay and end_overlay.visible:
@@ -905,8 +916,104 @@ func _build_build_buttons() -> void:
 	warehouse_label.label_settings = warehouse_label_settings
 	build_warehouse_button.add_child(warehouse_label)
 
+	var build_castle_button := TextureButton.new()
+	build_castle_button.custom_minimum_size = Vector2(64, 64)
+	build_castle_button.size = Vector2(64, 64)
+	build_castle_button.ignore_texture_size = true
+	build_castle_button.stretch_mode = TextureButton.STRETCH_SCALE
+	build_castle_button.tooltip_text = "主城 · 消耗SP放置"
+	build_castle_button.pressed.connect(_on_build_castle_pressed)
+	build_castle_button.texture_normal = preload("res://Assets/Buildings/Castle/Castle.png")
+	build_castle_button.set_script(preload("res://Interface/ScaleButton.gd"))
+	build_buttons_container.add_child(build_castle_button)
+
+	var castle_label := Label.new()
+	castle_label.name = "Label"
+	castle_label.anchor_top = 1.0
+	castle_label.anchor_bottom = 1.0
+	castle_label.offset_top = -66.0
+	castle_label.offset_right = 65.0
+	castle_label.theme_type_variation = &"GraphFrameTitleLabel"
+	castle_label.text = "主城"
+	castle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	castle_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	var castle_label_settings := LabelSettings.new()
+	castle_label_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	castle_label_settings.font_size = 18
+	castle_label_settings.outline_size = 5
+	castle_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
+	castle_label.label_settings = castle_label_settings
+	build_castle_button.add_child(castle_label)
+
+	var build_barracks_button := TextureButton.new()
+	build_barracks_button.custom_minimum_size = Vector2(64, 64)
+	build_barracks_button.size = Vector2(64, 64)
+	build_barracks_button.ignore_texture_size = true
+	build_barracks_button.stretch_mode = TextureButton.STRETCH_SCALE
+	build_barracks_button.tooltip_text = "兵营 · 消耗SP解锁兵力"
+	build_barracks_button.pressed.connect(_on_build_barracks_pressed)
+	build_barracks_button.texture_normal = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Buildings/Blue Buildings/Barracks.png")
+	build_barracks_button.set_script(preload("res://Interface/ScaleButton.gd"))
+	build_buttons_container.add_child(build_barracks_button)
+
+	var barracks_label := Label.new()
+	barracks_label.name = "Label"
+	barracks_label.anchor_top = 1.0
+	barracks_label.anchor_bottom = 1.0
+	barracks_label.offset_top = -66.0
+	barracks_label.offset_right = 65.0
+	barracks_label.theme_type_variation = &"GraphFrameTitleLabel"
+	barracks_label.text = "兵营"
+	barracks_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	barracks_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	var barracks_label_settings := LabelSettings.new()
+	barracks_label_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	barracks_label_settings.font_size = 18
+	barracks_label_settings.outline_size = 5
+	barracks_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
+	barracks_label.label_settings = barracks_label_settings
+	build_barracks_button.add_child(barracks_label)
+
+	var build_tower_button := TextureButton.new()
+	build_tower_button.custom_minimum_size = Vector2(64, 64)
+	build_tower_button.size = Vector2(64, 64)
+	build_tower_button.ignore_texture_size = true
+	build_tower_button.stretch_mode = TextureButton.STRETCH_SCALE
+	build_tower_button.tooltip_text = "箭塔 · 消耗资源放置"
+	build_tower_button.pressed.connect(_on_build_tower_pressed)
+	build_tower_button.texture_normal = preload("res://Assets/Buildings/Tower/Tower.png")
+	build_tower_button.set_script(preload("res://Interface/ScaleButton.gd"))
+	build_buttons_container.add_child(build_tower_button)
+
+	var tower_label := Label.new()
+	tower_label.name = "Label"
+	tower_label.anchor_top = 1.0
+	tower_label.anchor_bottom = 1.0
+	tower_label.offset_top = -66.0
+	tower_label.offset_right = 65.0
+	tower_label.theme_type_variation = &"GraphFrameTitleLabel"
+	tower_label.text = "箭塔"
+	tower_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tower_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	var tower_label_settings := LabelSettings.new()
+	tower_label_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	tower_label_settings.font_size = 18
+	tower_label_settings.outline_size = 5
+	tower_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
+	tower_label.label_settings = tower_label_settings
+	build_tower_button.add_child(tower_label)
+
 func _on_build_warehouse_pressed() -> void:
 	get_tree().call_group("level", "request_build_warehouse")
+
+func _on_build_castle_pressed() -> void:
+	get_tree().call_group("level", "request_build_castle")
+
+func _on_build_barracks_pressed() -> void:
+	get_tree().call_group("level", "request_build_barracks")
+
+func _on_build_tower_pressed() -> void:
+	get_tree().call_group("level", "request_build_tower")
 
 func update_warehouse_build_button_state(can_build: bool, cost_wood: int, cost_gold: int, cost_meat: int, cost_sp: int, missing_wood: int, missing_gold: int, missing_meat: int, missing_sp: int, placing: bool) -> void:
 	if build_warehouse_button == null:

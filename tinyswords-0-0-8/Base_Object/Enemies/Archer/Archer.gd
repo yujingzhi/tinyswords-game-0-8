@@ -195,10 +195,15 @@ func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, fra
 	# 将一张横向帧贴图切成动画
 	if texture == null:
 		return
+	var derived_frames = int(round(texture.get_width() / float(texture.get_height())))
+	if derived_frames <= 0:
+		derived_frames = frame_count
+	if derived_frames <= 0:
+		return
 	frames.add_animation(anim_name)
-	var frame_width = texture.get_width() / float(frame_count)
+	var frame_width = texture.get_width() / float(derived_frames)
 	var frame_height = texture.get_height()
-	for i in range(frame_count):
+	for i in range(derived_frames):
 		var region = Rect2(i * frame_width, 0, frame_width, frame_height)
 		var frame_tex = AtlasTexture.new()
 		frame_tex.atlas = texture
