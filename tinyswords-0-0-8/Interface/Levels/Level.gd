@@ -2,6 +2,83 @@ extends Node2D
 class_name Level
 # 关卡管理：负责随机生成资源物体、羊与弓箭手
 
+const UNIT_STATS := {
+	"warrior": {
+		"hp_base": 10,
+		"hp_per_level": 2,
+		"atk_base": 3,
+		"atk_per_level": 1,
+		"range": 26.0,
+		"interval": 0.9
+	},
+	"lancer": {
+		"hp_base": 9,
+		"hp_per_level": 1.5,
+		"atk_base": 3,
+		"atk_per_level": 0.8,
+		"range": 40.0,
+		"interval": 1.0
+	},
+	"monk": {
+		"hp_base": 8,
+		"hp_per_level": 1.5,
+		"heal_base": 3,
+		"heal_per_level": 1,
+		"range": 90.0,
+		"interval": 1.2
+	},
+	"blue_archer": {
+		"hp_base": 6,
+		"hp_per_level": 1.5,
+		"atk_base": 3,
+		"atk_per_level": 1,
+		"range": 220.0,
+		"interval": 1.3
+	},
+	"enemy_melee": {
+		"hp_base": 12,
+		"atk_base": 2,
+		"range": 26.0,
+		"interval": 0.8
+	},
+	"enemy_archer": {
+		"hp_base": 3,
+		"atk_base": 1,
+		"range": 220.0,
+		"interval": 1.4
+	},
+	"enemy_monk": {
+		"hp_base": 6,
+		"heal_base": 2,
+		"range": 90.0,
+		"interval": 1.2
+	},
+	"tower": {
+		"hp_base": 150,
+		"hp_per_level": 60
+	},
+	"castle": {
+		"hp_base": 300,
+		"hp_per_level": 80
+	},
+	"warehouse": {
+		"hp_base": 180,
+		"hp_per_level": 40
+	},
+	"barracks": {
+		"hp_base": 220,
+		"hp_per_level": 50
+	}
+}
+
+const ENEMY_WAVE_COEF := {
+	1: {"hp": 1.0, "atk": 1.0},
+	2: {"hp": 1.2, "atk": 1.05},
+	3: {"hp": 1.45, "atk": 1.1},
+	4: {"hp": 1.75, "atk": 1.2},
+	5: {"hp": 2.1, "atk": 1.3}
+}
+
 # --- 配置变量 ---
 # 1. 在检查器里，把 Tree.tscn 和 Rock.tscn 拖进这个数组
 @export var object_scenes: Array[PackedScene] = []
@@ -19,6 +96,9 @@ class_name Level
 @export var enemy_lancer_scene: PackedScene
 @export var enemy_archer_scene: PackedScene
 @export var enemy_monk_scene: PackedScene
+@export var ally_warrior_scene: PackedScene
+@export var ally_lancer_scene: PackedScene
+@export var ally_monk_scene: PackedScene
 @export var enemy_lancer_ratio_base: float = 0.1
 @export var enemy_lancer_ratio_per_wave: float = 0.02
 @export var enemy_archer_ratio_base: float = 0.08
@@ -155,9 +235,9 @@ class_name Level
 @export var collection_pile_energy_threshold: float = 8.0
 @export var collection_pile_max: int = 3
 @export var collection_pile_spawn_radius: float = 120.0
-@export var collection_pile_texture: Texture2D = preload("res://Assets/Buildings/Barracks.png")
-@export var storage_texture: Texture2D = preload("res://Assets/Buildings/Barracks.png")
-@export var storage_scale: Vector2 = Vector2(0.65, 0.65)
+@export var collection_pile_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Buildings/Blue Buildings/House3.png")
+@export var storage_texture: Texture2D = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Buildings/Blue Buildings/House3.png")
+@export var storage_scale: Vector2 = Vector2(0.6, 0.6)
 @export var storage_spawn_radius: float = 60.0
 @export var logistics_energy_min: float = 2.0
 @export var pile_build_interval: float = 2.0
@@ -249,6 +329,9 @@ var worker_drift_monitor: Dictionary = {}
 var worker_drift_messages: Array[String] = []
 var worker_drift_status: Array[String] = []
 var worker_spawn_no_fade_once: bool = false
+var placing_castle: bool = false
+var placing_barracks: bool = false
+var placing_tower: bool = false
 var camera_dragging: bool = false
 var input_debug_visible: bool = false
 var input_debug_timer: float = 0.0
@@ -265,6 +348,8 @@ var game_won: bool = false
 var waves_survived: int = 0
 var enemy_kills: int = 0
 var last_wave_spawned_count: int = 0
+var dynamic_difficulty: float = 1.0
+var last_cleared_wave_index: int = 0
 var meta_hud_timer: float = 0.0
 var warehouse_count: int = 0
 var placing_warehouse: bool = false
@@ -281,8 +366,24 @@ var moving_warehouse: Node2D
 var moving_warehouse_original_pos: Vector2 = Vector2.ZERO
 var moving_warehouse_original_z: int = 0
 var moving_warehouse_recalled_count: int = 0
+var castle_preview: Node2D
+var castle_preview_sprite: Sprite2D
+var barracks_preview: Node2D
+var barracks_preview_sprite: Sprite2D
+var tower_preview: Node2D
+var tower_preview_sprite: Sprite2D
+var pending_castle_cost_sp: int = 0
+var pending_barracks_cost_sp: int = 0
+var pending_tower_cost_wood: int = 0
+var pending_tower_cost_gold: int = 0
+var pending_tower_cost_meat: int = 0
+var pending_tower_cost_sp: int = 0
 var pending_worker_spawn_origin: Vector2 = Vector2.ZERO
 var has_pending_worker_spawn_origin: bool = false
+var barracks_spawn_position: Vector2 = Vector2.ZERO
+var has_pending_barracks_spawn: bool = false
+var hovered_barracks: Node2D
+var moving_barracks: Node2D
 var player_level: int = 1
 var player_exp: int = 0
 var exp_to_next: int = 0
@@ -311,6 +412,14 @@ const SKILL_BASE_RAINBOW_GOLD_CHANCE: float = 0.04
 const SKILL_HERO_BASE_HEALTH_PER_LEVEL: int = 2
 const SKILL_HERO_ADV_DAMAGE_PER_LEVEL: int = 1
 const SKILL_ENERGY_DECAY_MULTIPLIERS: Array[float] = [0.9, 0.8, 0.7, 0.6, 0.5]
+const MAX_CASTLES: int = 1
+const MAX_BARRACKS: int = 5
+const MAX_TOWERS: int = 5
+const DIFFICULTY_MIN: float = 0.7
+const DIFFICULTY_MAX: float = 1.5
+const DIFFICULTY_STEP: float = 0.05
+const DIFFICULTY_HP_TARGET_MIN: float = 0.3
+const DIFFICULTY_HP_TARGET_MAX: float = 0.8
 var _base_player_max_health: int = -1
 var _base_player_attack_damage: int = -1
 var entropy: float = 0.0
@@ -372,52 +481,45 @@ func _ready() -> void:
 	if not pending_loaded_payload.is_empty():
 		_apply_loaded_payload(pending_loaded_payload)
 		pending_loaded_payload.clear()
-	
-	# 🔥🔥🔥 启动延迟体检 🔥🔥🔥
-	print("\n================ 🕵️‍♂️ 游戏体检开始 ================")
-	await get_tree().create_timer(1.0).timeout # 等1秒让物体生成完
-	
-	# --- 1. 检查主角 (Peao) ---
-	var player = get_tree().get_first_node_in_group("peao")
-	if player:
-		print("✅ 主角检查: 找到主角 '", player.name, "'")
-		print("   - 分组: ", player.get_groups())
-	else:
-		printerr("❌ 主角检查失败: 没找到组名为 'peao' 的节点！")
-		printerr("   -> 解决办法: 选中主角根节点 -> 节点(Node)面板 -> 分组 -> 添加 'peao'")
-	
-	# --- 2. 检查掉落配置 ---
-	if object_scenes.is_empty():
-		printerr("❌ 错误: Level 的 Object Scenes 是空的！")
-	else:
-		for i in range(object_scenes.size()):
-			var scn = object_scenes[i]
-			if scn:
-				var instance = scn.instantiate()
-				print("🔍 检查列表第 ", i, " 项: ", instance.name)
-				
-				# 检查是不是把掉落物填进来了
-				if instance is RigidBody2D:
-					printerr("   ❌ 严重错误: 你把【掉落物】(RigidBody2D) 填进了 Object Scenes！")
-					printerr("   -> 它是: ", instance.name)
-					printerr("   -> 解决办法: 必须换成 Gold.tscn 或 Tree.tscn (StaticBody2D)")
-				
-				# 检查金矿的配置
-				elif "drop_item_scene" in instance:
-					var drop = instance.drop_item_scene.instantiate()
-					# 检查掉落物有没有脚本
-					if drop.get_script() == null:
-						printerr("   ❌ 严重错误: ", instance.name, " 掉落的物品没挂脚本！")
-					else:
-						print("   ✅ 掉落配置正常，掉落物脚本: ", drop.get_script().resource_path)
-					drop.queue_free()
-				
-				instance.queue_free()
-	print("================ 👨‍⚕️ 体检结束 ================\n")
-
 func _input(event: InputEvent) -> void:
 	if game_camera == null:
 		return
+	if placing_castle or placing_barracks or placing_tower:
+		if event is InputEventMouseButton:
+			var build_mouse := event as InputEventMouseButton
+			if build_mouse.button_index == MOUSE_BUTTON_RIGHT and build_mouse.pressed:
+				_cancel_castle_placement()
+				_cancel_barracks_placement()
+				_cancel_tower_placement()
+				get_viewport().set_input_as_handled()
+				return
+			if build_mouse.button_index == MOUSE_BUTTON_LEFT and build_mouse.pressed:
+				var cell = _world_to_cell(get_global_mouse_position())
+				if placing_castle and _can_place_castle_at_cell(cell):
+					_place_castle_at_cell(cell)
+					_cancel_castle_placement()
+				elif placing_barracks and _can_place_barracks_at_cell(cell):
+					var world_pos = _cell_to_world(cell)
+					if moving_barracks != null and is_instance_valid(moving_barracks):
+						moving_barracks.global_position = world_pos
+						moving_barracks = null
+						_cancel_barracks_placement()
+					else:
+						_place_barracks_at_cell(cell)
+						_cancel_barracks_placement()
+				elif placing_tower and _can_place_tower_at_cell(cell):
+					_place_tower_at_cell(cell)
+					_cancel_tower_placement()
+				get_viewport().set_input_as_handled()
+				return
+		if event is InputEventKey:
+			var build_key := event as InputEventKey
+			if build_key.pressed and not build_key.echo and build_key.keycode == KEY_ESCAPE:
+				_cancel_castle_placement()
+				_cancel_barracks_placement()
+				_cancel_tower_placement()
+				get_viewport().set_input_as_handled()
+				return
 	if placing_lamb:
 		if event is InputEventMouseButton:
 			var lamb_mouse := event as InputEventMouseButton
@@ -510,6 +612,12 @@ func _input(event: InputEvent) -> void:
 				_clear_warehouse_preview()
 				get_viewport().set_input_as_handled()
 				return
+			if hovered_barracks != null and is_instance_valid(hovered_barracks):
+				var ui2 = _get_interface()
+				if ui2 != null and ui2.has_method("open_barracks_action_menu"):
+					ui2.call("open_barracks_action_menu", hovered_barracks)
+					get_viewport().set_input_as_handled()
+					return
 	if event is InputEventKey:
 		var key_event := event as InputEventKey
 		if key_event.pressed and not key_event.echo and key_event.keycode == input_debug_toggle_key:
@@ -1088,6 +1196,9 @@ func _update_meta_hud(delta: float) -> void:
 	if ui == null:
 		return
 	var enemies_alive = get_tree().get_nodes_in_group("enemy").size()
+	if enemies_alive == 0 and last_wave_spawned_count > 0 and last_cleared_wave_index < waves_survived:
+		_adjust_dynamic_difficulty_after_wave()
+		last_cleared_wave_index = waves_survived
 	var logistics_enabled = energy_points >= logistics_energy_min and not collection_piles.is_empty()
 	var next_wave_in = max(0.0, archer_wave_timer)
 	var resources: Dictionary = {}
@@ -1117,7 +1228,31 @@ func _update_meta_hud(delta: float) -> void:
 		ui.call("update_warehouse_build_button_state", can_build, cost_wood, cost_gold, cost_meat, cost_sp, missing_wood, missing_gold, missing_meat, missing_sp, placing_warehouse)
 	if ui.has_method("update_player_experience"):
 		ui.call("update_player_experience", player_exp, exp_to_next, player_level)
-	ui.call("update_meta_hud", waves_survived, next_wave_in, enemies_alive, wave_size, energy_points, _get_energy_decay_rate(), energy_consumes_wood, _get_total_worker_speed_multiplier(), logistics_enabled, int(noise_seed), objective_text, hint_text, player_level, player_exp, exp_to_next, skill_points, warehouse_count, workers_current, workers_cap, cost_wood, cost_gold, cost_meat, cost_sp, placing_warehouse)
+	var allies_alive = get_tree().get_nodes_in_group("ally").size()
+	var castle_count = _get_castle_count()
+	var barracks_count = _get_barracks_count()
+	var tower_count = _get_tower_count()
+	var castle_can_build = castle_count < MAX_CASTLES
+	if ui.has_method("update_castle_build_button_state"):
+		ui.call("update_castle_build_button_state", castle_can_build, placing_castle)
+	var barracks_sp_cost = 0 if barracks_count <= 0 else 1
+	var barracks_missing_sp = max(0, barracks_sp_cost - skill_points)
+	var barracks_can_build = barracks_missing_sp == 0 and barracks_count < MAX_BARRACKS
+	if ui.has_method("update_barracks_build_button_state"):
+		ui.call("update_barracks_build_button_state", barracks_can_build, barracks_sp_cost, barracks_missing_sp, placing_barracks, barracks_count >= MAX_BARRACKS)
+	var tower_cost = _get_next_tower_cost()
+	var tower_cost_wood = int(tower_cost.get("wood", 0))
+	var tower_cost_gold = int(tower_cost.get("gold", 0))
+	var tower_cost_meat = int(tower_cost.get("meat", 0))
+	var tower_cost_sp = int(tower_cost.get("sp", 0))
+	var tower_missing_wood = max(0, tower_cost_wood - wood_count)
+	var tower_missing_gold = max(0, tower_cost_gold - gold_count)
+	var tower_missing_meat = max(0, tower_cost_meat - meat_count)
+	var tower_missing_sp = max(0, tower_cost_sp - skill_points)
+	var tower_can_build = tower_missing_wood == 0 and tower_missing_gold == 0 and tower_missing_meat == 0 and tower_missing_sp == 0 and tower_count < MAX_TOWERS
+	if ui.has_method("update_tower_build_button_state"):
+		ui.call("update_tower_build_button_state", tower_can_build, tower_cost_wood, tower_cost_gold, tower_cost_meat, tower_cost_sp, tower_missing_wood, tower_missing_gold, tower_missing_meat, tower_missing_sp, placing_tower, tower_count >= MAX_TOWERS)
+	ui.call("update_meta_hud", waves_survived, next_wave_in, enemies_alive, wave_size, energy_points, _get_energy_decay_rate(), energy_consumes_wood, _get_total_worker_speed_multiplier(), logistics_enabled, int(noise_seed), objective_text, hint_text, player_level, player_exp, exp_to_next, skill_points, warehouse_count, workers_current, workers_cap, cost_wood, cost_gold, cost_meat, cost_sp, placing_warehouse, allies_alive, castle_count, barracks_count, tower_count)
 
 func _compute_next_wave_size() -> int:
 	if archer_wave_base <= 0:
@@ -1152,6 +1287,22 @@ func _compute_hint_text(wood_count: int, gold_count: int) -> String:
 			return "建议: 采集资源让能量≥" + str(int(collection_pile_energy_threshold)) + "，再凑木" + str(need_wood) + " 矿" + str(need_gold) + " 自动建桩"
 		return "建议: 凑木" + str(need_wood) + " 矿" + str(need_gold) + " 等待自动建桩"
 	return "建议: 清理敌人，采集资源，维持血量"
+
+func _adjust_dynamic_difficulty_after_wave() -> void:
+	var castle = get_tree().get_first_node_in_group("castle")
+	if castle == null:
+		return
+	if not ("current_health" in castle) or not ("max_health" in castle):
+		return
+	var cur = float(castle.get("current_health"))
+	var maxv = float(castle.get("max_health"))
+	if maxv <= 0.0:
+		return
+	var ratio = cur / maxv
+	if ratio > DIFFICULTY_HP_TARGET_MAX:
+		dynamic_difficulty = min(dynamic_difficulty + DIFFICULTY_STEP, DIFFICULTY_MAX)
+	elif ratio < DIFFICULTY_HP_TARGET_MIN:
+		dynamic_difficulty = max(dynamic_difficulty - DIFFICULTY_STEP, DIFFICULTY_MIN)
 
 func _check_end_conditions() -> void:
 	var player = _get_player()
@@ -1410,8 +1561,100 @@ func request_build_warehouse() -> void:
 	pending_warehouse_cost_sp = cost_sp
 	_ensure_warehouse_preview()
 
+func request_build_castle() -> void:
+	if game_ended:
+		return
+	var ui = _get_interface()
+	if ui == null:
+		return
+	if placing_castle or placing_barracks or placing_tower or placing_warehouse or placing_lamb or placing_redwood_seed:
+		return
+	if _get_castle_count() >= MAX_CASTLES:
+		return
+	placing_castle = true
+	pending_castle_cost_sp = 0
+	_ensure_castle_preview()
+
+func request_build_barracks() -> void:
+	if game_ended:
+		return
+	var ui = _get_interface()
+	if ui == null:
+		return
+	if placing_castle or placing_barracks or placing_tower or placing_warehouse or placing_lamb or placing_redwood_seed:
+		return
+	if _get_barracks_count() >= MAX_BARRACKS:
+		return
+	var sp_cost = 0 if _get_barracks_count() <= 0 else 1
+	if skill_points < sp_cost:
+		return
+	placing_barracks = true
+	pending_barracks_cost_sp = sp_cost
+	_ensure_barracks_preview()
+
+func request_build_tower() -> void:
+	if game_ended:
+		return
+	var ui = _get_interface()
+	if ui == null:
+		return
+	if placing_castle or placing_barracks or placing_tower or placing_warehouse or placing_lamb or placing_redwood_seed:
+		return
+	var tower_count = _get_tower_count()
+	if tower_count >= MAX_TOWERS:
+		return
+	var first_tower = tower_count <= 0
+	var factor = 1 << max(0, tower_count - 1)
+	var wood_cost = 0 if first_tower else 20 * factor
+	var gold_cost = 0 if first_tower else 10 * factor
+	var meat_cost = 0 if first_tower else 0
+	var sp_cost = 0
+	var wood_count = int(ui.inventory_data.get("wood", 0))
+	var gold_count = int(ui.inventory_data.get("gold", 0))
+	var meat_count = int(ui.inventory_data.get("meat", 0))
+	if wood_count < wood_cost or gold_count < gold_cost or meat_count < meat_cost or skill_points < sp_cost:
+		return
+	placing_tower = true
+	pending_tower_cost_wood = wood_cost
+	pending_tower_cost_gold = gold_cost
+	pending_tower_cost_meat = meat_cost
+	pending_tower_cost_sp = sp_cost
+	_ensure_tower_preview()
+
 func _get_worker_cap() -> int:
 	return max(0, warehouse_count) * max(0, workers_per_warehouse)
+
+func _count_group_nodes(group_name: String) -> int:
+	var nodes = get_tree().get_nodes_in_group(group_name)
+	var count = 0
+	for n in nodes:
+		if n == null:
+			continue
+		if not is_instance_valid(n):
+			continue
+		count += 1
+	return count
+
+func _get_castle_count() -> int:
+	return _count_group_nodes("castle")
+
+func _get_barracks_count() -> int:
+	return _count_group_nodes("barracks")
+
+func _get_tower_count() -> int:
+	return _count_group_nodes("tower")
+
+func _get_next_tower_cost() -> Dictionary:
+	var count = _get_tower_count()
+	if count <= 0:
+		return {"wood": 0, "gold": 0, "meat": 0, "sp": 0}
+	var factor = 1 << max(0, count - 1)
+	return {
+		"wood": 20 * factor,
+		"gold": 10 * factor,
+		"meat": 0,
+		"sp": 0
+	}
 
 func _get_next_warehouse_cost() -> Dictionary:
 	if free_warehouse_tokens > 0 and warehouse_count <= 0:
@@ -1486,6 +1729,30 @@ func _get_warehouse_place_fail_reason(cell: Vector2i, ignore_storage: Node2D = n
 func _can_place_warehouse_at_cell(cell: Vector2i, ignore_storage: Node2D = null) -> bool:
 	return _get_warehouse_place_fail_reason(cell, ignore_storage) == ""
 
+func _can_place_castle_at_cell(cell: Vector2i) -> bool:
+	if not _is_grass_cell(cell):
+		return false
+	if _is_water_cell(cell):
+		return false
+	return true
+
+func _can_place_barracks_at_cell(cell: Vector2i) -> bool:
+	if not _is_grass_cell(cell):
+		return false
+	if _is_water_cell(cell):
+		return false
+	return true
+
+func _can_place_tower_at_cell(cell: Vector2i) -> bool:
+	if not _is_grass_cell(cell):
+		return false
+	if _is_water_cell(cell):
+		return false
+	if not defense_build_cells.is_empty():
+		var cell_def = _world_to_cell(_cell_to_world(cell))
+		return cell_def in defense_build_cells
+	return true
+
 func _place_warehouse_at_cell(cell: Vector2i) -> void:
 	var ui = _get_interface()
 	if ui == null:
@@ -1520,6 +1787,191 @@ func _place_warehouse_at_cell(cell: Vector2i) -> void:
 	if warehouse != null:
 		_dispatch_workers_from_warehouse(warehouse, workers_per_warehouse)
 	worker_spawn_no_fade_once = false
+
+func _place_castle_at_cell(cell: Vector2i) -> void:
+	var ui = _get_interface()
+	if ui == null:
+		return
+	if skill_points < pending_castle_cost_sp:
+		return
+	var world_pos = _cell_to_world(cell)
+	var castle_scene: PackedScene = preload("res://Base_Object/Buildings/Castle.tscn")
+	var inst = castle_scene.instantiate()
+	if inst == null:
+		return
+	inst.add_to_group("castle")
+	if inst is Node2D:
+		(inst as Node2D).global_position = world_pos
+	var castle_sprite = inst.get_node_or_null("Sprite2D") as Sprite2D
+	if castle_sprite != null:
+		castle_sprite.scale = storage_scale
+	if objects_container:
+		objects_container.add_child(inst)
+	else:
+		add_child(inst)
+	skill_points -= pending_castle_cost_sp
+	pending_castle_cost_sp = 0
+
+func _place_barracks_at_cell(cell: Vector2i) -> void:
+	var ui = _get_interface()
+	if ui == null:
+		return
+	if skill_points < pending_barracks_cost_sp:
+		return
+	var world_pos = _cell_to_world(cell)
+	var barracks_node = Node2D.new()
+	barracks_node.name = "Barracks"
+	barracks_node.add_to_group("barracks")
+	barracks_node.global_position = world_pos
+	var sprite = Sprite2D.new()
+	sprite.texture = preload("res://Assets/Buildings/Barracks.png")
+	sprite.scale = storage_scale
+	barracks_node.add_child(sprite)
+	if objects_container:
+		objects_container.add_child(barracks_node)
+	else:
+		add_child(barracks_node)
+	skill_points -= pending_barracks_cost_sp
+	pending_barracks_cost_sp = 0
+	barracks_spawn_position = world_pos
+	has_pending_barracks_spawn = true
+	if ui.has_method("open_barracks_unit_select"):
+		ui.call("open_barracks_unit_select")
+
+func _place_tower_at_cell(cell: Vector2i) -> void:
+	var ui = _get_interface()
+	if ui == null:
+		return
+	var wood_count = int(ui.inventory_data.get("wood", 0))
+	var gold_count = int(ui.inventory_data.get("gold", 0))
+	var meat_count = int(ui.inventory_data.get("meat", 0))
+	if wood_count < pending_tower_cost_wood or gold_count < pending_tower_cost_gold or meat_count < pending_tower_cost_meat:
+		return
+	if skill_points < pending_tower_cost_sp:
+		return
+	ui.inventory_data["wood"] = wood_count - pending_tower_cost_wood
+	ui.inventory_data["gold"] = gold_count - pending_tower_cost_gold
+	ui.inventory_data["meat"] = meat_count - pending_tower_cost_meat
+	skill_points -= pending_tower_cost_sp
+	ui.refresh_inventory_ui()
+	var world_pos = _cell_to_world(cell)
+	var tower_scene: PackedScene = preload("res://Base_Object/Buildings/Tower.tscn")
+	var inst = tower_scene.instantiate()
+	if inst == null:
+		return
+	inst.add_to_group("tower")
+	if inst is Node2D:
+		(inst as Node2D).global_position = world_pos
+	var tower_sprite = inst.get_node_or_null("Sprite2D") as Sprite2D
+	if tower_sprite != null:
+		tower_sprite.scale = storage_scale
+	if objects_container:
+		objects_container.add_child(inst)
+	else:
+		add_child(inst)
+	pending_tower_cost_wood = 0
+	pending_tower_cost_gold = 0
+	pending_tower_cost_meat = 0
+	pending_tower_cost_sp = 0
+
+func request_spawn_barracks_unit(unit_type: String) -> void:
+	var t = unit_type.strip_edges()
+	if t.is_empty():
+		t = "warrior"
+	if has_pending_barracks_spawn:
+		_spawn_barracks_unit_at_position(t, barracks_spawn_position)
+		has_pending_barracks_spawn = false
+		return
+	var ui = _get_interface()
+	if ui == null:
+		return
+	var cost_sp := 1
+	if skill_points < cost_sp:
+		return
+	skill_points -= cost_sp
+	_spawn_barracks_unit_at_position(t, barracks_spawn_position)
+
+func cancel_barracks_unit_selection() -> void:
+	has_pending_barracks_spawn = false
+
+func request_open_barracks_unit_select_at(barracks: Node2D) -> void:
+	if barracks == null or not is_instance_valid(barracks):
+		return
+	var ui = _get_interface()
+	if ui == null:
+		return
+	barracks_spawn_position = barracks.global_position
+	if ui.has_method("open_barracks_unit_select"):
+		ui.call("open_barracks_unit_select")
+
+func request_move_barracks(barracks: Node2D) -> void:
+	if barracks == null or not is_instance_valid(barracks):
+		return
+	if placing_castle or placing_barracks or placing_tower or placing_warehouse or placing_lamb or placing_redwood_seed:
+		return
+	moving_barracks = barracks
+	placing_barracks = true
+
+func _apply_ally_unit_stats(unit: Node, unit_type: String, level: int) -> void:
+	if unit == null:
+		return
+	var stats = UNIT_STATS.get(unit_type, null)
+	if stats == null:
+		return
+	var hp_base = float(stats.get("hp_base", 0.0))
+	var hp_per_level = float(stats.get("hp_per_level", 0.0))
+	var atk_base = float(stats.get("atk_base", 0.0))
+	var atk_per_level = float(stats.get("atk_per_level", 0.0))
+	var range_val = float(stats.get("range", 0.0))
+	var interval_val = float(stats.get("interval", 0.0))
+	var lvl_f = float(max(level, 1) - 1)
+	var hp_final = int(round(hp_base + hp_per_level * lvl_f))
+	if "max_health" in unit:
+		unit.set("max_health", hp_final)
+	if "current_health" in unit:
+		unit.set("current_health", hp_final)
+	if atk_base != 0.0 or atk_per_level != 0.0:
+		if "damage" in unit:
+			var atk_final = int(round(atk_base + atk_per_level * lvl_f))
+			unit.set("damage", atk_final)
+	if range_val > 0.0:
+		if "attack_range" in unit:
+			unit.set("attack_range", range_val)
+		if "heal_range" in unit:
+			unit.set("heal_range", range_val)
+	if interval_val > 0.0:
+		if "attack_interval" in unit:
+			unit.set("attack_interval", interval_val)
+		if "heal_interval" in unit:
+			unit.set("heal_interval", interval_val)
+	if stats.has("heal_base") and stats.has("heal_per_level") and "heal_amount" in unit:
+		var heal_base = float(stats.get("heal_base", 0.0))
+		var heal_per = float(stats.get("heal_per_level", 0.0))
+		var heal_final = int(round(heal_base + heal_per * lvl_f))
+		unit.set("heal_amount", heal_final)
+
+func _spawn_barracks_unit_at_position(unit_type: String, pos: Vector2) -> void:
+	var scene: PackedScene = null
+	if unit_type == "warrior":
+		scene = ally_warrior_scene if ally_warrior_scene != null else enemy_warrior_scene
+	elif unit_type == "lancer":
+		scene = ally_lancer_scene if ally_lancer_scene != null else enemy_lancer_scene
+	elif unit_type == "monk":
+		scene = ally_monk_scene if ally_monk_scene != null else enemy_monk_scene
+	if scene == null:
+		return
+	var inst = scene.instantiate()
+	if inst == null:
+		return
+	if "is_ally" in inst:
+		inst.is_ally = true
+	if inst is Node2D:
+		(inst as Node2D).global_position = pos
+	_apply_ally_unit_stats(inst, unit_type, 1)
+	if objects_container:
+		objects_container.add_child(inst)
+	else:
+		add_child(inst)
 
 func _spawn_warehouse_at_position(world_pos: Vector2) -> Node2D:
 	if storage_texture == null:
@@ -1641,6 +2093,96 @@ func _cancel_warehouse_placement() -> void:
 	has_pending_worker_spawn_origin = false
 	pending_worker_spawn_origin = Vector2.ZERO
 	_clear_warehouse_preview()
+
+func _ensure_castle_preview() -> void:
+	if castle_preview != null and is_instance_valid(castle_preview):
+		castle_preview.visible = true
+		return
+	var tex: Texture2D = preload("res://Assets/Buildings/Castle/Castle.png")
+	castle_preview = Node2D.new()
+	castle_preview.name = "CastlePreview"
+	castle_preview.z_index = 95
+	castle_preview_sprite = Sprite2D.new()
+	castle_preview_sprite.texture = tex
+	castle_preview_sprite.scale = storage_scale
+	castle_preview_sprite.modulate = Color(1, 1, 1, 0.85)
+	castle_preview.add_child(castle_preview_sprite)
+	if objects_container:
+		objects_container.add_child(castle_preview)
+	else:
+		add_child(castle_preview)
+
+func _clear_castle_preview() -> void:
+	if castle_preview != null and is_instance_valid(castle_preview):
+		castle_preview.queue_free()
+	castle_preview = null
+	castle_preview_sprite = null
+
+func _cancel_castle_placement() -> void:
+	placing_castle = false
+	pending_castle_cost_sp = 0
+	_clear_castle_preview()
+
+func _ensure_barracks_preview() -> void:
+	if barracks_preview != null and is_instance_valid(barracks_preview):
+		barracks_preview.visible = true
+		return
+	var tex: Texture2D = preload("res://Assets/Buildings/Barracks.png")
+	barracks_preview = Node2D.new()
+	barracks_preview.name = "BarracksPreview"
+	barracks_preview.z_index = 95
+	barracks_preview_sprite = Sprite2D.new()
+	barracks_preview_sprite.texture = tex
+	barracks_preview_sprite.scale = storage_scale
+	barracks_preview_sprite.modulate = Color(1, 1, 1, 0.85)
+	barracks_preview.add_child(barracks_preview_sprite)
+	if objects_container:
+		objects_container.add_child(barracks_preview)
+	else:
+		add_child(barracks_preview)
+
+func _clear_barracks_preview() -> void:
+	if barracks_preview != null and is_instance_valid(barracks_preview):
+		barracks_preview.queue_free()
+	barracks_preview = null
+	barracks_preview_sprite = null
+
+func _cancel_barracks_placement() -> void:
+	placing_barracks = false
+	pending_barracks_cost_sp = 0
+	_clear_barracks_preview()
+
+func _ensure_tower_preview() -> void:
+	if tower_preview != null and is_instance_valid(tower_preview):
+		tower_preview.visible = true
+		return
+	var tex: Texture2D = preload("res://Assets/Buildings/Tower/Tower.png")
+	tower_preview = Node2D.new()
+	tower_preview.name = "TowerPreview"
+	tower_preview.z_index = 95
+	tower_preview_sprite = Sprite2D.new()
+	tower_preview_sprite.texture = tex
+	tower_preview_sprite.scale = storage_scale
+	tower_preview_sprite.modulate = Color(1, 1, 1, 0.85)
+	tower_preview.add_child(tower_preview_sprite)
+	if objects_container:
+		objects_container.add_child(tower_preview)
+	else:
+		add_child(tower_preview)
+
+func _clear_tower_preview() -> void:
+	if tower_preview != null and is_instance_valid(tower_preview):
+		tower_preview.queue_free()
+	tower_preview = null
+	tower_preview_sprite = null
+
+func _cancel_tower_placement() -> void:
+	placing_tower = false
+	pending_tower_cost_wood = 0
+	pending_tower_cost_gold = 0
+	pending_tower_cost_meat = 0
+	pending_tower_cost_sp = 0
+	_clear_tower_preview()
 
 func request_plant_redwood_seed() -> void:
 	if game_ended:
@@ -1948,11 +2490,13 @@ func _spawn_redwood_tree_at_cell(cell: Vector2i) -> void:
 func _update_warehouse_hover_and_preview() -> void:
 	var mouse_world = get_global_mouse_position()
 	hovered_warehouse = null
+	hovered_barracks = null
 	var best = 28.0
 	if placing_redwood_seed or placing_lamb:
 		hovered_warehouse = null
 		return
-	if not placing_warehouse:
+	var placing_building = placing_warehouse or placing_castle or placing_barracks or placing_tower
+	if not placing_building:
 		var storages = get_tree().get_nodes_in_group("storage")
 		for s in storages:
 			var node := s as Node2D
@@ -1964,23 +2508,66 @@ func _update_warehouse_hover_and_preview() -> void:
 			if d <= best:
 				best = d
 				hovered_warehouse = node
-	if not placing_warehouse:
+		var barracks_nodes = get_tree().get_nodes_in_group("barracks")
+		for b in barracks_nodes:
+			var bnode := b as Node2D
+			if bnode == null:
+				continue
+			if not is_instance_valid(bnode):
+				continue
+			var db = mouse_world.distance_to(bnode.global_position)
+			if db <= best:
+				best = db
+				hovered_barracks = bnode
 		_clear_warehouse_preview()
 		return
+	if not placing_warehouse:
+		_clear_warehouse_preview()
 	var cell = _world_to_cell(mouse_world)
 	var world_pos = _cell_to_world(cell)
-	var can_place = _can_place_warehouse_at_cell(cell, moving_warehouse)
-	if moving_warehouse != null and is_instance_valid(moving_warehouse):
-		moving_warehouse.global_position = world_pos
-		var moving_sprite = moving_warehouse.get_node_or_null("Sprite2D") as Sprite2D
-		if moving_sprite != null:
-			moving_sprite.modulate = Color(0.9, 1.0, 0.9, 1.0) if can_place else Color(1.0, 0.6, 0.6, 1.0)
+	if placing_warehouse:
+		var can_place_warehouse = _can_place_warehouse_at_cell(cell, moving_warehouse)
+		if moving_warehouse != null and is_instance_valid(moving_warehouse):
+			moving_warehouse.global_position = world_pos
+			var moving_sprite = moving_warehouse.get_node_or_null("Sprite2D") as Sprite2D
+			if moving_sprite != null:
+				moving_sprite.modulate = Color(0.9, 1.0, 0.9, 1.0) if can_place_warehouse else Color(1.0, 0.6, 0.6, 1.0)
+			return
+		_ensure_warehouse_preview()
+		if warehouse_preview != null and is_instance_valid(warehouse_preview):
+			warehouse_preview.global_position = world_pos
+			if warehouse_preview_sprite != null and is_instance_valid(warehouse_preview_sprite):
+				warehouse_preview_sprite.modulate = Color(0.9, 1.0, 0.9, 0.85) if can_place_warehouse else Color(1.0, 0.6, 0.6, 0.85)
 		return
-	_ensure_warehouse_preview()
-	if warehouse_preview != null and is_instance_valid(warehouse_preview):
-		warehouse_preview.global_position = world_pos
-		if warehouse_preview_sprite != null and is_instance_valid(warehouse_preview_sprite):
-			warehouse_preview_sprite.modulate = Color(0.9, 1.0, 0.9, 0.85) if can_place else Color(1.0, 0.6, 0.6, 0.85)
+	if placing_castle:
+		var can_place_castle = _can_place_castle_at_cell(cell)
+		_ensure_castle_preview()
+		if castle_preview != null and is_instance_valid(castle_preview):
+			castle_preview.global_position = world_pos
+			if castle_preview_sprite != null and is_instance_valid(castle_preview_sprite):
+				castle_preview_sprite.modulate = Color(0.9, 1.0, 0.9, 0.85) if can_place_castle else Color(1.0, 0.6, 0.6, 0.85)
+		return
+	if placing_barracks:
+		var can_place_barracks = _can_place_barracks_at_cell(cell)
+		if moving_barracks != null and is_instance_valid(moving_barracks):
+			moving_barracks.global_position = world_pos
+			var moving_sprite_b = moving_barracks.get_node_or_null("Sprite2D") as Sprite2D
+			if moving_sprite_b != null:
+				moving_sprite_b.modulate = Color(0.9, 1.0, 0.9, 1.0) if can_place_barracks else Color(1.0, 0.6, 0.6, 1.0)
+			return
+		_ensure_barracks_preview()
+		if barracks_preview != null and is_instance_valid(barracks_preview):
+			barracks_preview.global_position = world_pos
+			if barracks_preview_sprite != null and is_instance_valid(barracks_preview_sprite):
+				barracks_preview_sprite.modulate = Color(0.9, 1.0, 0.9, 0.85) if can_place_barracks else Color(1.0, 0.6, 0.6, 0.85)
+		return
+	if placing_tower:
+		var can_place_tower = _can_place_tower_at_cell(cell)
+		_ensure_tower_preview()
+		if tower_preview != null and is_instance_valid(tower_preview):
+			tower_preview.global_position = world_pos
+			if tower_preview_sprite != null and is_instance_valid(tower_preview_sprite):
+				tower_preview_sprite.modulate = Color(0.9, 1.0, 0.9, 0.85) if can_place_tower else Color(1.0, 0.6, 0.6, 0.85)
 
 func _recompute_exp_to_next() -> void:
 	var base = max(1, exp_base_to_next)
@@ -2089,6 +2676,15 @@ func _apply_all_skill_effects() -> void:
 
 func get_skill_points() -> int:
 	return max(0, skill_points)
+
+func spend_skill_points(amount: int) -> bool:
+	var a = max(0, amount)
+	if a <= 0:
+		return false
+	if skill_points < a:
+		return false
+	skill_points -= a
+	return true
 
 func get_skill_levels() -> Dictionary:
 	return skill_levels.duplicate(true)
@@ -2232,6 +2828,12 @@ func _compute_enemy_wave_composition(wave_count: int, wave_index: int) -> Dictio
 	}
 
 func _compute_enemy_stat_scale(wave_index: int) -> Dictionary:
+	var coef = ENEMY_WAVE_COEF.get(wave_index, null)
+	if coef != null:
+		return {
+			"hp": float(coef.get("hp", 1.0)) * dynamic_difficulty,
+			"damage": float(coef.get("atk", 1.0)) * dynamic_difficulty
+		}
 	var hp_steps = 0
 	if enemy_hp_scale_every > 0:
 		hp_steps = int((wave_index - 1) / enemy_hp_scale_every)
@@ -2239,8 +2841,8 @@ func _compute_enemy_stat_scale(wave_index: int) -> Dictionary:
 	if enemy_damage_scale_every > 0:
 		dmg_steps = int((wave_index - 1) / enemy_damage_scale_every)
 	return {
-		"hp": 1.0 + enemy_hp_scale_step * float(hp_steps),
-		"damage": 1.0 + enemy_damage_scale_step * float(dmg_steps)
+		"hp": (1.0 + enemy_hp_scale_step * float(hp_steps)) * dynamic_difficulty,
+		"damage": (1.0 + enemy_damage_scale_step * float(dmg_steps)) * dynamic_difficulty
 	}
 
 func _apply_enemy_scale(enemy_instance: Node, scale: Dictionary) -> void:

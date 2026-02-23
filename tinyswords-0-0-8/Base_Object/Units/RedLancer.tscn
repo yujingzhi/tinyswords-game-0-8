@@ -13,6 +13,7 @@ script = ExtResource("1")
 idle_texture = ExtResource("2")
 move_texture = ExtResource("3")
 attack_texture = ExtResource("4")
+use_lancer_directional_attacks = true
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
 position = Vector2(0, -8)

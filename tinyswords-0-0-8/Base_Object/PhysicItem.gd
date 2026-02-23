@@ -38,18 +38,23 @@ var pickup_fx_defs: Array[Dictionary] = [
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var text_label: Label = $TextLabel
 @onready var pickup_area: Area2D = $Area2D 
+var pickup_ready: bool = false
 var spawn_origin: Vector2 = Vector2.ZERO
-# pickup_area 用于检测玩家接近
 
 func _ready() -> void:
-	# 初始化碰撞层，并连接拾取回调
 	set_deferred("collision_layer", 0)
 	set_deferred("collision_mask", 0)
 	add_to_group(&"pickup_item")
-	call_deferred("_capture_spawn_origin")
-	
+	spawn_origin = global_position
 	if is_instance_valid(pickup_area) and not pickup_area.body_entered.is_connected(_on_pickup_area_body_entered):
 		pickup_area.body_entered.connect(_on_pickup_area_body_entered)
+	if is_instance_valid(pickup_area):
+		if is_static_spawn:
+			pickup_ready = true
+		else:
+			pickup_area.monitoring = false
+			var pickup_timer = get_tree().create_timer(0.45)
+			pickup_timer.timeout.connect(_enable_pickup)
 		
 	_refresh_texture()
 	# 非静态生成时增加弹跳与缩放效果
@@ -69,10 +74,8 @@ func _ready() -> void:
 			var jump_tween: Tween = create_tween()
 			jump_tween.tween_property(sprite, "offset:y", -45.0, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 			jump_tween.tween_property(sprite, "offset:y", 0.0, 0.2).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
-	var timer = get_tree().create_timer(0.35)
-	timer.timeout.connect(_snap_to_land)
-	var timer2 = get_tree().create_timer(0.8)
-	timer2.timeout.connect(_snap_to_land)
+		var snap_timer = get_tree().create_timer(0.5)
+		snap_timer.timeout.connect(_final_snap_to_land)
 
 func _refresh_texture() -> void:
 	# 根据 item_type 切换贴图
@@ -119,24 +122,62 @@ func _refresh_texture() -> void:
 			if text_label:
 				text_label.visible = false
 
-func _capture_spawn_origin() -> void:
-	spawn_origin = global_position
+func _enable_pickup() -> void:
+	pickup_ready = true
+	if is_instance_valid(pickup_area):
+		pickup_area.monitoring = true
 
 func _get_level_node() -> Node:
 	return get_tree().get_first_node_in_group("level")
 
-func _snap_to_land() -> void:
+func _final_snap_to_land() -> void:
 	var level = _get_level_node()
 	if level == null:
 		return
-	if level.has_method("_snap_position_to_land"):
-		var snapped = level.call("_snap_position_to_land", global_position, spawn_origin, 64.0)
-		if snapped != global_position:
-			global_position = snapped
-			linear_velocity = Vector2.ZERO
+	if not (level.has_method("_world_to_cell") and level.has_method("_cell_to_world") and level.has_method("_is_grass_cell") and level.has_method("_is_water_cell")):
+		return
+	var current_pos: Vector2 = global_position
+	var cell = level.call("_world_to_cell", current_pos)
+	if not (cell is Vector2i):
+		return
+	if not level.call("_is_water_cell", cell):
+		return
+	var best_cell: Vector2i = cell
+	var best_dist: float = INF
+	var max_radius: int = 4
+	for r in range(1, max_radius + 1):
+		for dx in range(-r, r + 1):
+			for dy in range(-r, r + 1):
+				var c: Vector2i = Vector2i(cell.x + dx, cell.y + dy)
+				if not level.call("_is_grass_cell", c):
+					continue
+				if level.call("_is_water_cell", c):
+					continue
+				var world_pos = level.call("_cell_to_world", c)
+				if not (world_pos is Vector2):
+					continue
+				var d = (world_pos as Vector2).distance_to(current_pos)
+				if d < best_dist:
+					best_dist = d
+					best_cell = c
+		if best_dist < INF:
+			break
+	if best_dist == INF:
+		return
+	var target_pos = level.call("_cell_to_world", best_cell)
+	if not (target_pos is Vector2):
+		return
+	var target: Vector2 = target_pos
+	if target.distance_to(current_pos) > 64.0:
+		return
+	if target != current_pos:
+		linear_velocity = Vector2.ZERO
+		var tween: Tween = create_tween()
+		tween.tween_property(self, "global_position", target, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _on_pickup_area_body_entered(body: Node2D) -> void:
-	# 🌟 优化 5：使用 &"字符串" (StringName) 提升底层分组查询性能
+	if not pickup_ready:
+		return
 	if body.has_method("receive_pickup"):
 		var accepted = body.call("receive_pickup", item_type)
 		if accepted:

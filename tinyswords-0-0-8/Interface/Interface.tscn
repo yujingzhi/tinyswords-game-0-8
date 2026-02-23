@@ -17,6 +17,9 @@
 [ext_resource type="PackedScene" path="res://Base_Object/Units/RedLancer.tscn" id="9_red_lancer"]
 [ext_resource type="PackedScene" path="res://Base_Object/Units/RedArcher.tscn" id="9_red_archer"]
 [ext_resource type="PackedScene" path="res://Base_Object/Units/RedMonk.tscn" id="9_red_monk"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/BlueWarrior.tscn" id="8_blue_warrior"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/BlueLancer.tscn" id="9_blue_lancer"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/BlueMonk.tscn" id="9_blue_monk"]
 [ext_resource type="PackedScene" uid="uid://cf1p5y0j3g35a" path="res://Base_Object/Animals/Sheep/Sheep.tscn" id="8_sheep"]
 [ext_resource type="PackedScene" uid="uid://bitcn8g41e8s2" path="res://Terrain/Terrain.tscn" id="9_jwu1v"]
 [ext_resource type="FontFile" uid="uid://ckt0umhc75sre" path="res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf" id="10_8ua86"]
@@ -82,6 +85,9 @@ enemy_warrior_scene = ExtResource("8_red_warrior")
 enemy_lancer_scene = ExtResource("9_red_lancer")
 enemy_archer_scene = ExtResource("9_red_archer")
 enemy_monk_scene = ExtResource("9_red_monk")
+ally_warrior_scene = ExtResource("8_blue_warrior")
+ally_lancer_scene = ExtResource("9_blue_lancer")
+ally_monk_scene = ExtResource("9_blue_monk")
 
 [node name="Terrain" parent="." unique_id=94221036 instance=ExtResource("9_jwu1v")]
 

@@ -22,6 +22,7 @@ var wave_meta_label: Label
 var energy_meta_label: Label
 var cpu_meta_label: Label
 var logistics_meta_label: Label
+var buildings_meta_label: Label
 var exp_meta_label: Label
 var warehouse_meta_label: Label
 var objective_meta_label: Label
@@ -34,6 +35,9 @@ var exp_name_label: Label
 var exp_need_label: Label
 var build_buttons_container: HBoxContainer
 var build_warehouse_button: TextureButton
+var build_castle_button: TextureButton
+var build_barracks_button: TextureButton
+var build_tower_button: TextureButton
 var camera_recenter_tween: Tween
 
 var end_overlay: ColorRect
@@ -83,7 +87,7 @@ var total_slots: int = 21 # 背包总共有多少格子
 const SLOT_SIZE = Vector2(96, 96)
 const QUICKBAR_SIZE = Vector2(72, 72)
 const META_HUD_MARGIN = 12.0
-const META_HUD_SIZE_EXPANDED = Vector2(520, 210)
+const META_HUD_SIZE_EXPANDED = Vector2(520, 260)
 const META_HUD_SIZE_COLLAPSED = Vector2(320, 56)
 const META_HUD_SCALE_EXPANDED = Vector2(1.0, 1.0)
 const META_HUD_SCALE_COLLAPSED = Vector2(0.97, 0.97)
@@ -92,6 +96,11 @@ const META_HUD_SCALE_COLLAPSED = Vector2(0.97, 0.97)
 # 💡【核心数据】这是你真正的背包，所有加减全在这发生
 var inventory_data: Dictionary = {} 
 var quickbar_items: Array[String] = ["", "", "", "", ""]
+var barracks_panel: PanelContainer
+var barracks_unit_buttons: Dictionary = {}
+var barracks_selected_type: String = ""
+var barracks_action_panel: PanelContainer
+var selected_barracks: Node2D
 # inventory_data 保存“物品类型 -> 数量”
 
 # --- 🚀 初始化 ---
@@ -118,6 +127,7 @@ func _ready() -> void:
 	_refresh_quickbar_ui()
 	_update_resource_hud()
 	_build_meta_hud()
+	_build_barracks_panel()
 	_build_exp_progress()
 	_build_build_buttons()
 	_build_end_overlay()
@@ -239,11 +249,11 @@ func _update_resource_hud() -> void:
 	if meat_label:
 		meat_label.text = "肉 " + str(inventory_data.get("meat", 0))
 
-func update_meta_hud(waves_survived: int, next_wave_in: float, enemies_alive: int, _next_wave_size: int, energy_points: float, energy_decay_per_sec: float, _energy_consumes_wood: bool, worker_speed_multiplier: float, logistics_enabled: bool, _map_seed: int, objective_text: String, hint_text: String, player_level: int, player_exp: int, exp_to_next: int, skill_points: int, warehouse_count: int, workers_current: int, workers_cap: int, next_warehouse_wood: int, next_warehouse_gold: int, next_warehouse_meat: int, next_warehouse_sp: int, placing_warehouse: bool) -> void:
+func update_meta_hud(waves_survived: int, next_wave_in: float, enemies_alive: int, _next_wave_size: int, energy_points: float, energy_decay_per_sec: float, _energy_consumes_wood: bool, worker_speed_multiplier: float, logistics_enabled: bool, _map_seed: int, objective_text: String, hint_text: String, player_level: int, player_exp: int, exp_to_next: int, skill_points: int, warehouse_count: int, workers_current: int, workers_cap: int, next_warehouse_wood: int, next_warehouse_gold: int, next_warehouse_meat: int, next_warehouse_sp: int, placing_warehouse: bool, allies_alive: int, castle_count: int, barracks_count: int, tower_count: int) -> void:
 	if meta_hud_container == null:
 		return
 	if wave_meta_label:
-		wave_meta_label.text = "第" + str(waves_survived) + "波  ·  下波 " + str(int(ceil(next_wave_in))) + "s  ·  敌人 " + str(enemies_alive)
+		wave_meta_label.text = "第" + str(waves_survived) + "波  ·  下波 " + str(int(ceil(next_wave_in))) + "s  ·  敌人 " + str(enemies_alive) + "  ·  我军 " + str(allies_alive)
 	if energy_meta_label:
 		energy_meta_label.text = "能量 " + str(int(round(energy_points))) + "  (-" + str(snapped(energy_decay_per_sec, 0.1)) + "/s)"
 	if cpu_meta_label:
@@ -251,6 +261,8 @@ func update_meta_hud(waves_survived: int, next_wave_in: float, enemies_alive: in
 	if logistics_meta_label:
 		var place_text = "  ·  摆放中" if placing_warehouse else ""
 		logistics_meta_label.text = "仓库 " + str(warehouse_count) + "  ·  工人 " + str(workers_current) + "/" + str(workers_cap) + place_text
+	if buildings_meta_label:
+		buildings_meta_label.text = "建筑 主城 " + str(castle_count) + "  ·  兵营 " + str(barracks_count) + "  ·  箭塔 " + str(tower_count) + "  ·  仓库 " + str(warehouse_count)
 	if exp_meta_label:
 		exp_meta_label.text = "Lv." + str(player_level) + "  ·  经验 " + str(player_exp) + "/" + str(exp_to_next) + "  ·  SP " + str(max(0, skill_points))
 	if warehouse_meta_label:
@@ -327,6 +339,7 @@ func _build_meta_hud() -> void:
 	energy_meta_label = Label.new()
 	cpu_meta_label = Label.new()
 	logistics_meta_label = Label.new()
+	buildings_meta_label = Label.new()
 	exp_meta_label = Label.new()
 	warehouse_meta_label = Label.new()
 	objective_meta_label = Label.new()
@@ -336,6 +349,7 @@ func _build_meta_hud() -> void:
 	cpu_meta_label.text = "物流 离线  ·  工人速度 x1"
 	logistics_meta_label.text = "仓库 0  ·  工人 0/0"
 	exp_meta_label.text = "Lv.1  ·  经验 0/0  ·  SP 0"
+	buildings_meta_label.text = "建筑 主城 0  ·  兵营 0  ·  箭塔 0  ·  仓库 0"
 	warehouse_meta_label.text = "建造仓库: 木0  矿0  肉0  SP 0"
 	objective_meta_label.text = "任务 "
 	hint_meta_label.text = "提示 "
@@ -343,6 +357,7 @@ func _build_meta_hud() -> void:
 	energy_meta_label.label_settings = hud_settings
 	cpu_meta_label.label_settings = hud_settings
 	logistics_meta_label.label_settings = hud_settings
+	buildings_meta_label.label_settings = hud_settings
 	exp_meta_label.label_settings = hud_settings
 	warehouse_meta_label.label_settings = hud_settings
 	objective_meta_label.label_settings = hud_settings
@@ -351,6 +366,7 @@ func _build_meta_hud() -> void:
 	meta_hud_container.add_child(energy_meta_label)
 	meta_hud_container.add_child(cpu_meta_label)
 	meta_hud_container.add_child(logistics_meta_label)
+	meta_hud_container.add_child(buildings_meta_label)
 	meta_hud_container.add_child(exp_meta_label)
 	meta_hud_container.add_child(warehouse_meta_label)
 	meta_hud_container.add_child(objective_meta_label)
@@ -890,7 +906,7 @@ func _build_build_buttons() -> void:
 	build_warehouse_button.stretch_mode = TextureButton.STRETCH_SCALE
 	build_warehouse_button.tooltip_text = "需要: 木0 矿0 肉0"
 	build_warehouse_button.pressed.connect(_on_build_warehouse_pressed)
-	build_warehouse_button.texture_normal = preload("res://Assets/Buildings/Barracks.png")
+	build_warehouse_button.texture_normal = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Buildings/Blue Buildings/House3.png")
 	build_warehouse_button.set_script(preload("res://Interface/ScaleButton.gd"))
 	build_buttons_container.add_child(build_warehouse_button)
 	var click_audio = AudioStreamPlayer.new()
@@ -916,12 +932,12 @@ func _build_build_buttons() -> void:
 	warehouse_label.label_settings = warehouse_label_settings
 	build_warehouse_button.add_child(warehouse_label)
 
-	var build_castle_button := TextureButton.new()
+	build_castle_button = TextureButton.new()
 	build_castle_button.custom_minimum_size = Vector2(64, 64)
 	build_castle_button.size = Vector2(64, 64)
 	build_castle_button.ignore_texture_size = true
 	build_castle_button.stretch_mode = TextureButton.STRETCH_SCALE
-	build_castle_button.tooltip_text = "主城 · 消耗SP放置"
+	build_castle_button.tooltip_text = "主城 · 仅能建造一座"
 	build_castle_button.pressed.connect(_on_build_castle_pressed)
 	build_castle_button.texture_normal = preload("res://Assets/Buildings/Castle/Castle.png")
 	build_castle_button.set_script(preload("res://Interface/ScaleButton.gd"))
@@ -945,7 +961,7 @@ func _build_build_buttons() -> void:
 	castle_label.label_settings = castle_label_settings
 	build_castle_button.add_child(castle_label)
 
-	var build_barracks_button := TextureButton.new()
+	build_barracks_button = TextureButton.new()
 	build_barracks_button.custom_minimum_size = Vector2(64, 64)
 	build_barracks_button.size = Vector2(64, 64)
 	build_barracks_button.ignore_texture_size = true
@@ -974,7 +990,7 @@ func _build_build_buttons() -> void:
 	barracks_label.label_settings = barracks_label_settings
 	build_barracks_button.add_child(barracks_label)
 
-	var build_tower_button := TextureButton.new()
+	build_tower_button = TextureButton.new()
 	build_tower_button.custom_minimum_size = Vector2(64, 64)
 	build_tower_button.size = Vector2(64, 64)
 	build_tower_button.ignore_texture_size = true
@@ -1015,6 +1031,210 @@ func _on_build_barracks_pressed() -> void:
 func _on_build_tower_pressed() -> void:
 	get_tree().call_group("level", "request_build_tower")
 
+func _build_barracks_panel() -> void:
+	if barracks_panel != null:
+		return
+	barracks_panel = PanelContainer.new()
+	barracks_panel.name = "BarracksPanel"
+	barracks_panel.visible = false
+	add_child(barracks_panel)
+	barracks_panel.anchor_left = 0.5
+	barracks_panel.anchor_top = 0.5
+	barracks_panel.anchor_right = 0.5
+	barracks_panel.anchor_bottom = 0.5
+	barracks_panel.offset_left = -384.0
+	barracks_panel.offset_right = 384.0
+	barracks_panel.offset_top = -216.0
+	barracks_panel.offset_bottom = 216.0
+	var bg = TextureRect.new()
+	bg.name = "Background"
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.anchor_left = 0.0
+	bg.anchor_top = 0.0
+	bg.anchor_right = 1.0
+	bg.anchor_bottom = 1.0
+	bg.offset_left = 0.0
+	bg.offset_top = 0.0
+	bg.offset_right = 0.0
+	bg.offset_bottom = 0.0
+	bg.texture = load("res://Assets/UI/TechGridBackground.png")
+	barracks_panel.add_child(bg)
+	var vbox = VBoxContainer.new()
+	vbox.anchor_left = 0.0
+	vbox.anchor_top = 0.0
+	vbox.anchor_right = 1.0
+	vbox.anchor_bottom = 1.0
+	vbox.offset_left = 16.0
+	vbox.offset_top = 16.0
+	vbox.offset_right = -16.0
+	vbox.offset_bottom = -16.0
+	barracks_panel.add_child(vbox)
+	var title = Label.new()
+	title.text = "选择兵种"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+	var hbox = HBoxContainer.new()
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 48)
+	vbox.add_child(hbox)
+	barracks_unit_buttons.clear()
+	var warrior_button = TextureButton.new()
+	warrior_button.tooltip_text = "战士"
+	warrior_button.custom_minimum_size = Vector2(160, 160)
+	warrior_button.ignore_texture_size = true
+	warrior_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	warrior_button.texture_normal = _build_unit_icon("res://Assets/Units/Blue/Warrior/Warrior_Idle.png", 6)
+	warrior_button.pressed.connect(func(): _on_barracks_unit_button_pressed("warrior"))
+	hbox.add_child(warrior_button)
+	barracks_unit_buttons["warrior"] = warrior_button
+	var lancer_button = TextureButton.new()
+	lancer_button.tooltip_text = "枪兵"
+	lancer_button.custom_minimum_size = Vector2(160, 160)
+	lancer_button.ignore_texture_size = true
+	lancer_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	lancer_button.texture_normal = _build_unit_icon("res://Assets/Units/Blue/Lancer/Lancer_Idle.png", 6)
+	lancer_button.pressed.connect(func(): _on_barracks_unit_button_pressed("lancer"))
+	hbox.add_child(lancer_button)
+	barracks_unit_buttons["lancer"] = lancer_button
+	var monk_button = TextureButton.new()
+	monk_button.tooltip_text = "僧侣"
+	monk_button.custom_minimum_size = Vector2(160, 160)
+	monk_button.ignore_texture_size = true
+	monk_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	monk_button.texture_normal = _build_unit_icon("res://Assets/Units/Blue/Monk/Idle.png", 6)
+	monk_button.pressed.connect(func(): _on_barracks_unit_button_pressed("monk"))
+	hbox.add_child(monk_button)
+	barracks_unit_buttons["monk"] = monk_button
+	var buttons_row = HBoxContainer.new()
+	buttons_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	buttons_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_child(buttons_row)
+	var confirm_button = Button.new()
+	confirm_button.text = "确定"
+	confirm_button.pressed.connect(_on_barracks_confirm_pressed)
+	buttons_row.add_child(confirm_button)
+	var cancel_button = Button.new()
+	cancel_button.text = "取消"
+	cancel_button.pressed.connect(_on_barracks_cancel_pressed)
+	buttons_row.add_child(cancel_button)
+	barracks_selected_type = "warrior"
+	_update_barracks_selection_visuals()
+
+	if barracks_action_panel == null:
+		barracks_action_panel = PanelContainer.new()
+		barracks_action_panel.name = "BarracksActionPanel"
+		barracks_action_panel.visible = false
+		add_child(barracks_action_panel)
+		barracks_action_panel.anchor_left = 0.5
+		barracks_action_panel.anchor_top = 0.5
+		barracks_action_panel.anchor_right = 0.5
+		barracks_action_panel.anchor_bottom = 0.5
+		barracks_action_panel.offset_left = -120.0
+		barracks_action_panel.offset_right = 120.0
+		barracks_action_panel.offset_top = -80.0
+		barracks_action_panel.offset_bottom = 80.0
+		var action_vbox = VBoxContainer.new()
+		action_vbox.anchor_left = 0.0
+		action_vbox.anchor_top = 0.0
+		action_vbox.anchor_right = 1.0
+		action_vbox.anchor_bottom = 1.0
+		action_vbox.offset_left = 12.0
+		action_vbox.offset_top = 12.0
+		action_vbox.offset_right = -12.0
+		action_vbox.offset_bottom = -12.0
+		barracks_action_panel.add_child(action_vbox)
+		var title_label = Label.new()
+		title_label.text = "兵营操作"
+		title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		action_vbox.add_child(title_label)
+		var add_unit_button = Button.new()
+		add_unit_button.text = "添加兵种"
+		add_unit_button.pressed.connect(_on_barracks_action_add_unit_pressed)
+		action_vbox.add_child(add_unit_button)
+		var move_button = Button.new()
+		move_button.text = "移动位置"
+		move_button.pressed.connect(_on_barracks_action_move_pressed)
+		action_vbox.add_child(move_button)
+
+func _build_unit_icon(texture_path: String, frames: int) -> Texture2D:
+	var tex: Texture2D = load(texture_path)
+	if tex == null:
+		return null
+	var derived_frames := 0
+	if tex.get_height() > 0:
+		derived_frames = int(round(tex.get_width() / float(tex.get_height())))
+	if derived_frames <= 0:
+		derived_frames = max(frames, 1)
+	var frame_width = tex.get_width() / float(derived_frames)
+	var region = Rect2(0, 0, frame_width, tex.get_height())
+	var atlas = AtlasTexture.new()
+	atlas.atlas = tex
+	atlas.region = region
+	return atlas
+
+func open_barracks_unit_select() -> void:
+	if barracks_panel == null:
+		_build_barracks_panel()
+	barracks_selected_type = "warrior"
+	_update_barracks_selection_visuals()
+	barracks_panel.visible = true
+
+func open_barracks_action_menu(barracks: Node2D) -> void:
+	if barracks_action_panel == null:
+		_build_barracks_panel()
+	selected_barracks = barracks
+	barracks_action_panel.visible = true
+
+func close_barracks_action_menu() -> void:
+	if barracks_action_panel == null:
+		return
+	barracks_action_panel.visible = false
+
+func close_barracks_unit_select() -> void:
+	if barracks_panel == null:
+		return
+	barracks_panel.visible = false
+
+func _on_barracks_unit_button_pressed(unit_type: String) -> void:
+	barracks_selected_type = unit_type
+	_update_barracks_selection_visuals()
+
+func _update_barracks_selection_visuals() -> void:
+	for key in barracks_unit_buttons.keys():
+		var btn = barracks_unit_buttons[key]
+		if btn == null:
+			continue
+		if String(key) == barracks_selected_type:
+			btn.modulate = Color(1, 1, 1, 1)
+			btn.scale = Vector2(1.1, 1.1)
+		else:
+			btn.modulate = Color(0.7, 0.7, 0.7, 0.8)
+			btn.scale = Vector2(1, 1)
+
+func _on_barracks_confirm_pressed() -> void:
+	if barracks_selected_type == "":
+		barracks_selected_type = "warrior"
+	get_tree().call_group("level", "request_spawn_barracks_unit", barracks_selected_type)
+	close_barracks_unit_select()
+
+func _on_barracks_action_add_unit_pressed() -> void:
+	close_barracks_action_menu()
+	if selected_barracks != null and is_instance_valid(selected_barracks):
+		get_tree().call_group("level", "request_open_barracks_unit_select_at", selected_barracks)
+
+func _on_barracks_action_move_pressed() -> void:
+	close_barracks_action_menu()
+	if selected_barracks != null and is_instance_valid(selected_barracks):
+		get_tree().call_group("level", "request_move_barracks", selected_barracks)
+
+func _on_barracks_cancel_pressed() -> void:
+	get_tree().call_group("level", "cancel_barracks_unit_selection")
+	close_barracks_unit_select()
+
 func update_warehouse_build_button_state(can_build: bool, cost_wood: int, cost_gold: int, cost_meat: int, cost_sp: int, missing_wood: int, missing_gold: int, missing_meat: int, missing_sp: int, placing: bool) -> void:
 	if build_warehouse_button == null:
 		return
@@ -1031,6 +1251,60 @@ func update_warehouse_build_button_state(can_build: bool, cost_wood: int, cost_g
 		build_warehouse_button.modulate = Color(1, 1, 1, 1)
 	else:
 		build_warehouse_button.modulate = Color(0.55, 0.55, 0.55, 0.9)
+
+func update_castle_build_button_state(can_build: bool, placing: bool) -> void:
+	if build_castle_button == null:
+		return
+	var text = "主城 · 仅能建造一座"
+	if placing:
+		build_castle_button.tooltip_text = "左键放置，右键取消\n" + text
+	else:
+		build_castle_button.tooltip_text = text
+	build_castle_button.disabled = (not placing) and (not can_build)
+	if placing:
+		build_castle_button.modulate = Color(0.9, 1.0, 0.9, 1.0)
+	elif can_build:
+		build_castle_button.modulate = Color(1, 1, 1, 1)
+	else:
+		build_castle_button.modulate = Color(0.55, 0.55, 0.55, 0.9)
+
+func update_barracks_build_button_state(can_build: bool, cost_sp: int, missing_sp: int, placing: bool, reached_max: bool) -> void:
+	if build_barracks_button == null:
+		return
+	var missing_text = "缺少 SP" + str(missing_sp)
+	var cost_text = "成本: SP" + str(cost_sp)
+	if reached_max:
+		build_barracks_button.tooltip_text = "兵营数量已达上限"
+	elif placing:
+		build_barracks_button.tooltip_text = "左键放置，右键取消\n" + cost_text
+	else:
+		build_barracks_button.tooltip_text = cost_text + "\n" + missing_text
+	build_barracks_button.disabled = (not placing) and ((not can_build) or reached_max)
+	if placing:
+		build_barracks_button.modulate = Color(0.9, 1.0, 0.9, 1.0)
+	elif can_build and not reached_max:
+		build_barracks_button.modulate = Color(1, 1, 1, 1)
+	else:
+		build_barracks_button.modulate = Color(0.55, 0.55, 0.55, 0.9)
+
+func update_tower_build_button_state(can_build: bool, cost_wood: int, cost_gold: int, cost_meat: int, cost_sp: int, missing_wood: int, missing_gold: int, missing_meat: int, missing_sp: int, placing: bool, reached_max: bool) -> void:
+	if build_tower_button == null:
+		return
+	var missing_text = "缺少: 木" + str(missing_wood) + " 矿" + str(missing_gold) + " 肉" + str(missing_meat) + " SP" + str(missing_sp)
+	var cost_text = "成本: 木" + str(cost_wood) + " 矿" + str(cost_gold) + " 肉" + str(cost_meat) + " SP" + str(cost_sp)
+	if reached_max:
+		build_tower_button.tooltip_text = "箭塔数量已达上限"
+	elif placing:
+		build_tower_button.tooltip_text = "左键放置，右键取消\n" + cost_text
+	else:
+		build_tower_button.tooltip_text = cost_text + "\n" + missing_text
+	build_tower_button.disabled = (not placing) and ((not can_build) or reached_max)
+	if placing:
+		build_tower_button.modulate = Color(0.9, 1.0, 0.9, 1.0)
+	elif can_build and not reached_max:
+		build_tower_button.modulate = Color(1, 1, 1, 1)
+	else:
+		build_tower_button.modulate = Color(0.55, 0.55, 0.55, 0.9)
 
 func _auto_fill_quickbar_from_inventory() -> void:
 	var available: Array[String] = []

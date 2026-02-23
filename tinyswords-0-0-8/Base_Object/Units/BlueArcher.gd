@@ -22,6 +22,7 @@ extends CharacterBody2D
 
 var current_health: int = 0
 var shoot_timer: float = 0.0
+var health_bar: TextureProgressBar
 
 func _ready() -> void:
 	current_health = max_health
@@ -29,6 +30,8 @@ func _ready() -> void:
 	_build_animations()
 	if anim:
 		anim.play("idle")
+	_build_health_bar()
+	_update_health_bar()
 
 func _physics_process(delta: float) -> void:
 	shoot_timer -= delta
@@ -56,7 +59,7 @@ func try_shoot_at(target_global_position: Vector2) -> void:
 		if arrow:
 			arrow.global_position = global_position + Vector2(0, -8)
 			if arrow.has_method("setup"):
-				arrow.setup(dir, arrow_speed, damage)
+				arrow.setup(dir, arrow_speed, damage, false)
 			get_parent().add_child(arrow)
 
 func _build_animations() -> void:
@@ -89,3 +92,39 @@ func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, fra
 		frame_tex.region = region
 		frames.add_frame(anim_name, frame_tex)
 	frames.set_animation_speed(anim_name, fps)
+
+func _build_health_bar() -> void:
+	var bar = TextureProgressBar.new()
+	bar.name = "HealthBar"
+	bar.position = Vector2(-80, -44)
+	bar.custom_minimum_size = Vector2(320, 64)
+	bar.scale = Vector2(0.4, 0.4)
+	bar.nine_patch_stretch = true
+	bar.stretch_margin_left = 64
+	bar.stretch_margin_top = 0
+	bar.stretch_margin_right = 64
+	bar.stretch_margin_bottom = 0
+	bar.texture_under = load("res://Assets/UI/Bars/SmallBar_Base.png")
+	add_child(bar)
+	var fill = TextureProgressBar.new()
+	fill.name = "Fill"
+	fill.anchors_preset = Control.PRESET_FULL_RECT
+	fill.anchor_left = 0.0
+	fill.anchor_top = 0.0
+	fill.anchor_right = 1.0
+	fill.anchor_bottom = 1.0
+	fill.offset_left = 56.0
+	fill.offset_right = -56.0
+	fill.offset_bottom = 0.0
+	fill.nine_patch_stretch = true
+	fill.stretch_margin_left = 64
+	fill.stretch_margin_right = 64
+	fill.texture_progress = load("res://Assets/UI/Bars/SmallBar_Fill.png")
+	bar.add_child(fill)
+	health_bar = fill
+
+func _update_health_bar() -> void:
+	if health_bar == null:
+		return
+	health_bar.max_value = max_health
+	health_bar.value = current_health
