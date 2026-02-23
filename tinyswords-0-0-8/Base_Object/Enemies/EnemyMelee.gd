@@ -5,6 +5,7 @@ extends CharacterBody2D
 @export var attack_range: float = 26.0
 @export var attack_interval: float = 0.8
 @export var damage: int = 2
+@export var defense: int = 0
 @export var is_ally: bool = false
 @export var idle_texture: Texture2D
 @export var move_texture: Texture2D
@@ -29,6 +30,14 @@ var has_applied_attack_damage: bool = false
 var attack_hit_time: float = 0.0
 var attack_hit_time_by_anim: Dictionary = {}
 var current_attack_target: Node2D = null
+var is_dragged: bool = false
+var separation_radius: float = 16.0
+var separation_strength: float = 40.0
+var is_hovered: bool = false
+var hit_fx_defs: Array[Dictionary] = [
+	{"texture": preload("res://Assets/FX/Particles/Explosion_01.png"), "frames": 8},
+	{"texture": preload("res://Assets/FX/Particles/Explosion_02.png"), "frames": 10}
+]
 
 func _ready() -> void:
 	if is_ally:
@@ -36,6 +45,11 @@ func _ready() -> void:
 	else:
 		add_to_group("enemy")
 	current_health = max_health
+	input_pickable = true
+	if not mouse_entered.is_connected(_on_mouse_entered):
+		mouse_entered.connect(_on_mouse_entered)
+	if not mouse_exited.is_connected(_on_mouse_exited):
+		mouse_exited.connect(_on_mouse_exited)
 	_build_animations()
 	if anim:
 		anim.play("idle")
@@ -44,6 +58,10 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	attack_timer -= delta
+	if is_dragged:
+		velocity = Vector2.ZERO
+		move_and_slide()
+		return
 	if is_attacking:
 		attack_elapsed += delta
 		if not has_applied_attack_damage and attack_elapsed >= attack_hit_time:
@@ -57,27 +75,30 @@ func _physics_process(delta: float) -> void:
 				current_attack_target = null
 				attack_elapsed = 0.0
 				has_applied_attack_damage = false
-		velocity = Vector2.ZERO
+		velocity = _compute_separation()
 		move_and_slide()
 		return
 	var target = _pick_target()
 	if target == null:
-		velocity = Vector2.ZERO
+		velocity = _compute_separation()
 		move_and_slide()
 		if anim:
 			anim.play("idle")
 		return
 	var to_target = target.global_position - global_position
 	var distance = to_target.length()
+	var separation = _compute_separation()
+	if separation.length() > move_speed * 0.6:
+		separation = separation.normalized() * move_speed * 0.6
 	if distance <= attack_range:
-		velocity = Vector2.ZERO
+		velocity = separation
 		move_and_slide()
 		if attack_timer <= 0.0:
 			_try_attack(target)
 		elif anim and (not anim.is_playing() or not str(anim.animation).begins_with("attack")):
 			anim.play("idle")
 	else:
-		velocity = to_target.normalized() * move_speed
+		velocity = to_target.normalized() * move_speed + separation
 		move_and_slide()
 		if anim:
 			anim.play("move")
@@ -88,41 +109,49 @@ func _pick_target() -> Node2D:
 		var enemies = get_tree().get_nodes_in_group("enemy")
 		if enemies.is_empty():
 			return null
-		var best: Node2D = null
-		var best_dist := INF
-		for e in enemies:
-			var enemy := e as Node2D
-			if enemy == null or not is_instance_valid(enemy):
-				continue
-			var d = global_position.distance_to(enemy.global_position)
-			if d < best_dist:
-				best_dist = d
-				best = enemy
-		return best
-	var candidates: Array[Node2D] = []
+		return _closest_node(enemies)
+	var allies: Array[Node2D] = []
 	var player = get_tree().get_first_node_in_group("peao") as Node2D
 	if player != null:
-		candidates.append(player)
-	var allies = get_tree().get_nodes_in_group("ally")
-	for a in allies:
+		allies.append(player)
+	for a in get_tree().get_nodes_in_group("ally"):
 		var ally := a as Node2D
-		if ally != null and is_instance_valid(ally):
-			candidates.append(ally)
-	var towers = get_tree().get_nodes_in_group("tower")
-	for t in towers:
+		if ally != null and is_instance_valid(ally) and not _is_protected_by_tower(ally):
+			allies.append(ally)
+	if not allies.is_empty():
+		return _closest_node(allies)
+	var buildings: Array[Node2D] = []
+	for t in get_tree().get_nodes_in_group("tower"):
 		var tower := t as Node2D
 		if tower != null and is_instance_valid(tower):
-			candidates.append(tower)
-	if candidates.is_empty():
-		return null
-	var best: Node2D = null
-	var best_dist := INF
-	for c in candidates:
-		var d = global_position.distance_to(c.global_position)
-		if d < best_dist:
-			best_dist = d
-			best = c
-	return best
+			buildings.append(tower)
+	for b in get_tree().get_nodes_in_group("barracks"):
+		var barracks := b as Node2D
+		if barracks != null and is_instance_valid(barracks):
+			buildings.append(barracks)
+	for s in get_tree().get_nodes_in_group("storage"):
+		var storage := s as Node2D
+		if storage != null and is_instance_valid(storage):
+			buildings.append(storage)
+	if not buildings.is_empty():
+		return _closest_node(buildings)
+	var castle = get_tree().get_first_node_in_group("castle") as Node2D
+	if castle != null and is_instance_valid(castle):
+		return castle
+	return null
+
+func _is_protected_by_tower(ally: Node2D) -> bool:
+	if ally == null or not is_instance_valid(ally):
+		return false
+	if not ally.has_meta("tower_guard"):
+		return false
+	if not bool(ally.get_meta("tower_guard")):
+		return false
+	if ally.has_meta("tower_owner"):
+		var tower_owner = ally.get_meta("tower_owner")
+		if tower_owner is Node and is_instance_valid(tower_owner):
+			return true
+	return false
 
 func _try_attack(target: Node2D) -> void:
 	if attack_timer > 0.0:
@@ -171,8 +200,10 @@ func _try_attack(target: Node2D) -> void:
 				attack_hit_time = 0.3
 
 func take_damage(amount: int) -> void:
-	current_health = max(current_health - amount, 0)
+	var final_damage = max(0, amount - defense)
+	current_health = max(current_health - final_damage, 0)
 	_update_health_bar()
+	_spawn_hit_fx()
 	if current_health <= 0:
 		if not is_ally:
 			get_tree().call_group("level", "register_enemy_kill", "melee")
@@ -300,6 +331,7 @@ func _build_health_bar() -> void:
 	bar.position = Vector2(-80, -40)
 	bar.custom_minimum_size = Vector2(320, 64)
 	bar.scale = Vector2(0.4, 0.4)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.nine_patch_stretch = true
 	bar.stretch_margin_left = 64
 	bar.stretch_margin_top = 0
@@ -321,6 +353,7 @@ func _build_health_bar() -> void:
 	fill.stretch_margin_left = 64
 	fill.stretch_margin_right = 64
 	fill.texture_progress = load("res://Assets/UI/Bars/SmallBar_Fill.png")
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	bar.add_child(fill)
 	health_bar = fill
 
@@ -329,3 +362,99 @@ func _update_health_bar() -> void:
 		return
 	health_bar.max_value = max_health
 	health_bar.value = current_health
+	health_bar.tooltip_text = ""
+	_refresh_hover_tooltip()
+
+func _get_hover_tooltip_text() -> String:
+	return "生命 " + str(current_health) + "/" + str(max_health) + "\n攻击 " + str(damage) + "\n防御 " + str(defense)
+
+func _refresh_hover_tooltip() -> void:
+	if not is_hovered:
+		return
+	var ui = get_tree().get_first_node_in_group("interface")
+	if ui != null and ui.has_method("show_unit_tooltip"):
+		ui.call("show_unit_tooltip", self, _get_hover_tooltip_text())
+
+func _on_mouse_entered() -> void:
+	is_hovered = true
+	_refresh_hover_tooltip()
+
+func _on_mouse_exited() -> void:
+	is_hovered = false
+	var ui = get_tree().get_first_node_in_group("interface")
+	if ui != null and ui.has_method("hide_unit_tooltip"):
+		ui.call("hide_unit_tooltip", self)
+
+func set_dragged_position(pos: Vector2) -> void:
+	global_position = pos
+
+func _closest_node(nodes: Array) -> Node2D:
+	var best: Node2D = null
+	var best_dist := INF
+	for n in nodes:
+		var node := n as Node2D
+		if node == null or not is_instance_valid(node):
+			continue
+		var d = global_position.distance_to(node.global_position)
+		if d < best_dist:
+			best_dist = d
+			best = node
+	return best
+
+func _compute_separation() -> Vector2:
+	var result = Vector2.ZERO
+	var groups = ["ally", "enemy"]
+	for g in groups:
+		for n in get_tree().get_nodes_in_group(g):
+			var node := n as Node2D
+			if node == null or not is_instance_valid(node) or node == self:
+				continue
+			var offset = global_position - node.global_position
+			var dist = offset.length()
+			if dist <= 0.001:
+				continue
+			if dist < separation_radius:
+				result += offset.normalized() * (separation_radius - dist)
+	if result == Vector2.ZERO:
+		return result
+	return result.normalized() * separation_strength
+
+func _spawn_hit_fx() -> void:
+	if hit_fx_defs.is_empty():
+		return
+	var fx = hit_fx_defs.pick_random()
+	var texture = fx["texture"]
+	var frame_count = int(fx["frames"])
+	if texture == null or frame_count <= 0:
+		return
+	var sprite_fx = AnimatedSprite2D.new()
+	sprite_fx.sprite_frames = _build_fx_frames(texture, frame_count, 12.0)
+	sprite_fx.animation = "fx"
+	sprite_fx.global_position = global_position + Vector2(0, -8)
+	sprite_fx.scale = Vector2(0.6, 0.6)
+	sprite_fx.z_index = 15
+	var root = get_tree().current_scene
+	if root:
+		root.add_child(sprite_fx)
+	sprite_fx.play()
+	if not sprite_fx.animation_finished.is_connected(sprite_fx.queue_free):
+		sprite_fx.animation_finished.connect(sprite_fx.queue_free)
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(sprite_fx, "scale", sprite_fx.scale * 1.2, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(sprite_fx, "modulate:a", 0.0, 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(sprite_fx.queue_free)
+
+func _build_fx_frames(texture: Texture2D, frame_count: int, fps: float) -> SpriteFrames:
+	var frames = SpriteFrames.new()
+	frames.add_animation("fx")
+	var frame_width = texture.get_width() / float(frame_count)
+	var frame_height = texture.get_height()
+	for i in range(frame_count):
+		var atlas = AtlasTexture.new()
+		atlas.atlas = texture
+		atlas.region = Rect2(i * frame_width, 0, frame_width, frame_height)
+		frames.add_frame("fx", atlas)
+	frames.set_animation_speed("fx", fps)
+	frames.set_animation_loop("fx", false)
+	return frames

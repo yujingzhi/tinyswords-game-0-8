@@ -338,6 +338,7 @@ var input_debug_timer: float = 0.0
 var last_mouse_position: Vector2 = Vector2.ZERO
 var last_zoom_delta: float = 0.0
 var storage_node: Node2D
+var selected_barracks_for_spawn: Node2D
 var tree_respawn_queue: Array[Dictionary] = []
 var rock_respawn_queue: Array[Dictionary] = []
 var gold_respawn_queue: Array[Dictionary] = []
@@ -384,6 +385,9 @@ var barracks_spawn_position: Vector2 = Vector2.ZERO
 var has_pending_barracks_spawn: bool = false
 var hovered_barracks: Node2D
 var moving_barracks: Node2D
+var dragging_unit: Node2D
+var dragging_unit_offset: Vector2 = Vector2.ZERO
+var dragging_is_tower: bool = false
 var player_level: int = 1
 var player_exp: int = 0
 var exp_to_next: int = 0
@@ -399,7 +403,8 @@ var skill_levels: Dictionary = {
 	"base_eff": 0,
 	"sheep_mutation": 0,
 	"redwood_seed": 0,
-	"rainbow_gold": 0
+	"rainbow_gold": 0,
+	"troop_unify": 0
 }
 const SKILL_WORKER_SPEED_MULTIPLIERS: Array[float] = [1.1, 1.2, 1.4, 1.6, 1.8, 2.0]
 const SKILL_CARRY_CAPACITIES: Array[int] = [2, 3, 4, 5, 6]
@@ -411,6 +416,7 @@ const SKILL_BASE_REDWOOD_SEED_CHANCE: float = 0.04
 const SKILL_BASE_RAINBOW_GOLD_CHANCE: float = 0.04
 const SKILL_HERO_BASE_HEALTH_PER_LEVEL: int = 2
 const SKILL_HERO_ADV_DAMAGE_PER_LEVEL: int = 1
+const SKILL_TROOP_DEFENSE_PER_LEVEL: int = 1
 const SKILL_ENERGY_DECAY_MULTIPLIERS: Array[float] = [0.9, 0.8, 0.7, 0.6, 0.5]
 const MAX_CASTLES: int = 1
 const MAX_BARRACKS: int = 5
@@ -595,6 +601,32 @@ func _input(event: InputEvent) -> void:
 				_cancel_warehouse_placement()
 				get_viewport().set_input_as_handled()
 				return
+	if event is InputEventMouseButton:
+		var drag_click := event as InputEventMouseButton
+		if drag_click.button_index == MOUSE_BUTTON_LEFT and drag_click.pressed and not drag_click.ctrl_pressed:
+			if dragging_unit == null and not placing_castle and not placing_barracks and not placing_tower and not placing_warehouse and not placing_lamb and not placing_redwood_seed:
+				var drag_target = _find_drag_target(get_global_mouse_position())
+				if drag_target != null:
+					dragging_unit = drag_target
+					dragging_unit_offset = drag_target.global_position - get_global_mouse_position()
+					dragging_is_tower = drag_target.is_in_group("tower")
+					if "is_dragged" in dragging_unit:
+						dragging_unit.is_dragged = true
+					get_viewport().set_input_as_handled()
+					return
+		if drag_click.button_index == MOUSE_BUTTON_LEFT and not drag_click.pressed:
+			if dragging_unit != null:
+				if "is_dragged" in dragging_unit:
+					dragging_unit.is_dragged = false
+				dragging_unit = null
+				dragging_is_tower = false
+				get_viewport().set_input_as_handled()
+				return
+	if event is InputEventMouseMotion and dragging_unit != null:
+		var target_pos = get_global_mouse_position() + dragging_unit_offset
+		_set_drag_target_position(dragging_unit, target_pos)
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventMouseButton:
 		var click_event := event as InputEventMouseButton
 		if click_event.button_index == MOUSE_BUTTON_LEFT and click_event.pressed and not click_event.ctrl_pressed:
@@ -878,17 +910,17 @@ func _pick_worker_exit_target_near(base_position: Vector2) -> Vector2:
 		var angle = world_rng.randf_range(0.0, TAU)
 		var dist = max(12.0, worker_exit_distance + world_rng.randf_range(-6.0, 6.0))
 		var candidate_exit = base_position + Vector2(cos(angle), sin(angle)) * dist
-		var snapped = _snap_position_to_land(candidate_exit, base_position, max(16.0, worker_exit_distance * 2.0))
+		var snapped_pos = _snap_position_to_land(candidate_exit, base_position, max(16.0, worker_exit_distance * 2.0))
 		if worker_spawn_safety_enabled:
-			if _is_worker_world_pos_out_of_bounds(snapped):
+			if _is_worker_world_pos_out_of_bounds(snapped_pos):
 				continue
-			var d = snapped.distance_to(base_position)
+			var d = snapped_pos.distance_to(base_position)
 			if d > worker_spawn_max_exit_target_distance:
 				continue
-		var score = snapped.distance_to(candidate_exit)
+		var score = snapped_pos.distance_to(candidate_exit)
 		if score < best_dist:
 			best_dist = score
-			best = snapped
+			best = snapped_pos
 	return best
 
 func _register_worker_spawn(worker: Node, base_position: Vector2, warehouse: Node2D) -> void:
@@ -969,7 +1001,7 @@ func _update_worker_spawn_monitor(delta: float) -> void:
 			if worker_spawn_monitor_verbose:
 				_emit_input_debug("worker_spawn_giveup pos=" + str(pos) + " home=" + str(home))
 
-func _update_worker_drift_monitor(delta: float) -> void:
+func _update_worker_drift_monitor(_delta: float) -> void:
 	if not worker_drift_monitor_enabled:
 		worker_drift_messages.clear()
 		worker_drift_status.clear()
@@ -1316,6 +1348,9 @@ func _check_end_conditions() -> void:
 	var win_by_piles = collection_pile_enabled and victory_require_full_piles and collection_piles.size() >= collection_pile_max and collection_pile_max > 0
 	if win_by_piles:
 		_end_game(true, "victory")
+
+func handle_castle_destroyed() -> void:
+	_end_game(false, "castle_destroyed")
 
 func _end_game(won: bool, reason: String) -> void:
 	if game_ended:
@@ -1819,10 +1854,18 @@ func _place_barracks_at_cell(cell: Vector2i) -> void:
 	if skill_points < pending_barracks_cost_sp:
 		return
 	var world_pos = _cell_to_world(cell)
-	var barracks_node = Node2D.new()
+	var barracks_node = StaticBody2D.new()
 	barracks_node.name = "Barracks"
 	barracks_node.add_to_group("barracks")
 	barracks_node.global_position = world_pos
+	barracks_node.collision_layer = 1
+	barracks_node.collision_mask = 1
+	barracks_node.set_script(preload("res://Base_Object/Buildings/Barracks.gd"))
+	var collision = CollisionShape2D.new()
+	var shape = RectangleShape2D.new()
+	shape.size = Vector2(64, 48) * storage_scale
+	collision.shape = shape
+	barracks_node.add_child(collision)
 	var sprite = Sprite2D.new()
 	sprite.texture = preload("res://Assets/Buildings/Barracks.png")
 	sprite.scale = storage_scale
@@ -1834,9 +1877,12 @@ func _place_barracks_at_cell(cell: Vector2i) -> void:
 	skill_points -= pending_barracks_cost_sp
 	pending_barracks_cost_sp = 0
 	barracks_spawn_position = world_pos
+	selected_barracks_for_spawn = barracks_node
+	_set_barracks_spawn_count(barracks_node, 0)
 	has_pending_barracks_spawn = true
 	if ui.has_method("open_barracks_unit_select"):
 		ui.call("open_barracks_unit_select")
+	_notify_barracks_unit_select_ui(barracks_node)
 
 func _place_tower_at_cell(cell: Vector2i) -> void:
 	var ui = _get_interface()
@@ -1878,21 +1924,56 @@ func request_spawn_barracks_unit(unit_type: String) -> void:
 	var t = unit_type.strip_edges()
 	if t.is_empty():
 		t = "warrior"
+	var cost_sp := _get_barracks_unit_cost_sp(selected_barracks_for_spawn)
+	if cost_sp > 0 and skill_points < cost_sp:
+		return
 	if has_pending_barracks_spawn:
 		_spawn_barracks_unit_at_position(t, barracks_spawn_position)
+		_increment_barracks_spawn_count(selected_barracks_for_spawn)
 		has_pending_barracks_spawn = false
 		return
 	var ui = _get_interface()
 	if ui == null:
 		return
-	var cost_sp := 1
-	if skill_points < cost_sp:
-		return
 	skill_points -= cost_sp
 	_spawn_barracks_unit_at_position(t, barracks_spawn_position)
+	_increment_barracks_spawn_count(selected_barracks_for_spawn)
+
+func _get_barracks_spawn_count(barracks: Node2D) -> int:
+	if barracks == null or not is_instance_valid(barracks):
+		return 0
+	if barracks.has_meta("spawned_units"):
+		return int(barracks.get_meta("spawned_units"))
+	return 0
+
+func _set_barracks_spawn_count(barracks: Node2D, count: int) -> void:
+	if barracks == null or not is_instance_valid(barracks):
+		return
+	barracks.set_meta("spawned_units", max(0, count))
+
+func _increment_barracks_spawn_count(barracks: Node2D) -> void:
+	if barracks == null or not is_instance_valid(barracks):
+		return
+	var count = _get_barracks_spawn_count(barracks)
+	_set_barracks_spawn_count(barracks, count + 1)
+
+func _get_barracks_unit_cost_sp(barracks: Node2D) -> int:
+	var count = _get_barracks_spawn_count(barracks)
+	return 0 if count <= 0 else 1
+
+func _notify_barracks_unit_select_ui(barracks: Node2D) -> void:
+	var ui = _get_interface()
+	if ui == null:
+		return
+	var cost_sp = _get_barracks_unit_cost_sp(barracks)
+	var missing_sp = max(0, cost_sp - skill_points)
+	var unit_index = _get_barracks_spawn_count(barracks) + 1
+	if ui.has_method("update_barracks_unit_select_cost"):
+		ui.call("update_barracks_unit_select_cost", cost_sp, missing_sp, unit_index)
 
 func cancel_barracks_unit_selection() -> void:
 	has_pending_barracks_spawn = false
+	selected_barracks_for_spawn = null
 
 func request_open_barracks_unit_select_at(barracks: Node2D) -> void:
 	if barracks == null or not is_instance_valid(barracks):
@@ -1900,9 +1981,11 @@ func request_open_barracks_unit_select_at(barracks: Node2D) -> void:
 	var ui = _get_interface()
 	if ui == null:
 		return
+	selected_barracks_for_spawn = barracks
 	barracks_spawn_position = barracks.global_position
 	if ui.has_method("open_barracks_unit_select"):
 		ui.call("open_barracks_unit_select")
+	_notify_barracks_unit_select_ui(selected_barracks_for_spawn)
 
 func request_move_barracks(barracks: Node2D) -> void:
 	if barracks == null or not is_instance_valid(barracks):
@@ -1949,6 +2032,7 @@ func _apply_ally_unit_stats(unit: Node, unit_type: String, level: int) -> void:
 		var heal_per = float(stats.get("heal_per_level", 0.0))
 		var heal_final = int(round(heal_base + heal_per * lvl_f))
 		unit.set("heal_amount", heal_final)
+	_apply_troop_unify_to_unit(unit)
 
 func _spawn_barracks_unit_at_position(unit_type: String, pos: Vector2) -> void:
 	var scene: PackedScene = null
@@ -1976,9 +2060,17 @@ func _spawn_barracks_unit_at_position(unit_type: String, pos: Vector2) -> void:
 func _spawn_warehouse_at_position(world_pos: Vector2) -> Node2D:
 	if storage_texture == null:
 		return null
-	var node = Node2D.new()
+	var node = StaticBody2D.new()
 	node.name = "Warehouse"
 	node.add_to_group("storage")
+	node.collision_layer = 1
+	node.collision_mask = 1
+	node.set_script(preload("res://Base_Object/Buildings/Warehouse.gd"))
+	var collision = CollisionShape2D.new()
+	var shape = RectangleShape2D.new()
+	shape.size = Vector2(64, 48) * storage_scale
+	collision.shape = shape
+	node.add_child(collision)
 	var sprite = Sprite2D.new()
 	sprite.texture = storage_texture
 	sprite.scale = storage_scale
@@ -2569,6 +2661,37 @@ func _update_warehouse_hover_and_preview() -> void:
 			if tower_preview_sprite != null and is_instance_valid(tower_preview_sprite):
 				tower_preview_sprite.modulate = Color(0.9, 1.0, 0.9, 0.85) if can_place_tower else Color(1.0, 0.6, 0.6, 0.85)
 
+func _find_drag_target(mouse_world: Vector2) -> Node2D:
+	var best: Node2D = null
+	var best_dist := 22.0
+	var allies = get_tree().get_nodes_in_group("ally")
+	for a in allies:
+		var node := a as Node2D
+		if node == null or not is_instance_valid(node):
+			continue
+		var d = mouse_world.distance_to(node.global_position)
+		if d <= best_dist:
+			best_dist = d
+			best = node
+	var towers = get_tree().get_nodes_in_group("tower")
+	for t in towers:
+		var tower := t as Node2D
+		if tower == null or not is_instance_valid(tower):
+			continue
+		var dt = mouse_world.distance_to(tower.global_position)
+		if dt <= best_dist:
+			best_dist = dt
+			best = tower
+	return best
+
+func _set_drag_target_position(target: Node2D, pos: Vector2) -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	if target.has_method("set_dragged_position"):
+		target.call("set_dragged_position", pos)
+		return
+	target.global_position = pos
+
 func _recompute_exp_to_next() -> void:
 	var base = max(1, exp_base_to_next)
 	var lvl = max(1, player_level)
@@ -2593,6 +2716,104 @@ func _get_hero_base_bonus() -> int:
 func _get_hero_adv_bonus() -> int:
 	var level = max(0, int(skill_levels.get("hero_adv", 0)))
 	return level * SKILL_HERO_ADV_DAMAGE_PER_LEVEL
+
+func _get_troop_unify_level() -> int:
+	return max(0, int(skill_levels.get("troop_unify", 0)))
+
+func _get_troop_unify_scale(level: int) -> Dictionary:
+	if level <= 0:
+		return {"hp": 1.0, "damage": 1.0, "defense": 0}
+	var wave_index = level + 1
+	var coef = ENEMY_WAVE_COEF.get(wave_index, null)
+	var hp_scale = 1.0
+	var dmg_scale = 1.0
+	if coef != null:
+		hp_scale = float(coef.get("hp", 1.0))
+		dmg_scale = float(coef.get("atk", 1.0))
+	else:
+		var hp_steps = 0
+		if enemy_hp_scale_every > 0:
+			hp_steps = int((wave_index - 1) / enemy_hp_scale_every)
+		var dmg_steps = 0
+		if enemy_damage_scale_every > 0:
+			dmg_steps = int((wave_index - 1) / enemy_damage_scale_every)
+		hp_scale = 1.0 + enemy_hp_scale_step * float(hp_steps)
+		dmg_scale = 1.0 + enemy_damage_scale_step * float(dmg_steps)
+	return {"hp": hp_scale, "damage": dmg_scale, "defense": level * SKILL_TROOP_DEFENSE_PER_LEVEL}
+
+func _apply_troop_base_stats(unit: Node, base_stats: Dictionary) -> void:
+	if unit == null:
+		return
+	if base_stats.has("max_health") and "max_health" in unit:
+		var base_max = int(base_stats.get("max_health", 0))
+		unit.set("max_health", base_max)
+		if "current_health" in unit:
+			var cur_val = int(unit.get("current_health"))
+			if base_max > 0:
+				cur_val = clamp(cur_val, 1, base_max)
+			unit.set("current_health", min(cur_val, base_max))
+	if base_stats.has("damage") and "damage" in unit:
+		unit.set("damage", int(base_stats.get("damage", 0)))
+	if base_stats.has("heal_amount") and "heal_amount" in unit:
+		unit.set("heal_amount", int(base_stats.get("heal_amount", 0)))
+	if base_stats.has("defense") and "defense" in unit:
+		unit.set("defense", int(base_stats.get("defense", 0)))
+	if unit.has_method("_update_health_bar"):
+		unit.call("_update_health_bar")
+
+func _apply_troop_unify_to_unit(unit: Node) -> void:
+	if unit == null:
+		return
+	var level = _get_troop_unify_level()
+	var base_stats: Dictionary = {}
+	if unit.has_meta("troop_base_stats"):
+		base_stats = unit.get_meta("troop_base_stats")
+	else:
+		if "max_health" in unit:
+			base_stats["max_health"] = int(unit.get("max_health"))
+		if "damage" in unit:
+			base_stats["damage"] = int(unit.get("damage"))
+		if "heal_amount" in unit:
+			base_stats["heal_amount"] = int(unit.get("heal_amount"))
+		if "defense" in unit:
+			base_stats["defense"] = int(unit.get("defense"))
+		unit.set_meta("troop_base_stats", base_stats)
+	if level <= 0:
+		_apply_troop_base_stats(unit, base_stats)
+		return
+	var scale = _get_troop_unify_scale(level)
+	if base_stats.has("max_health") and "max_health" in unit:
+		var base_max = int(base_stats.get("max_health", 0))
+		var new_max = int(round(base_max * float(scale.get("hp", 1.0))))
+		new_max = max(1, new_max)
+		unit.set("max_health", new_max)
+		if "current_health" in unit:
+			var cur_val = int(unit.get("current_health"))
+			var new_cur = new_max
+			if base_max > 0:
+				var ratio = float(cur_val) / float(base_max)
+				new_cur = int(round(new_max * clamp(ratio, 0.0, 1.0)))
+				new_cur = clamp(new_cur, 1, new_max)
+			unit.set("current_health", new_cur)
+	if base_stats.has("damage") and "damage" in unit:
+		var base_damage = int(base_stats.get("damage", 0))
+		unit.set("damage", int(round(base_damage * float(scale.get("damage", 1.0)))))
+	if base_stats.has("heal_amount") and "heal_amount" in unit:
+		var base_heal = int(base_stats.get("heal_amount", 0))
+		unit.set("heal_amount", int(round(base_heal * float(scale.get("damage", 1.0)))))
+	if base_stats.has("defense") and "defense" in unit:
+		var base_def = int(base_stats.get("defense", 0))
+		var bonus_def = int(scale.get("defense", 0))
+		unit.set("defense", max(0, base_def + bonus_def))
+	if unit.has_method("_update_health_bar"):
+		unit.call("_update_health_bar")
+
+func _apply_troop_unify_to_allies() -> void:
+	var allies = get_tree().get_nodes_in_group("ally")
+	for ally in allies:
+		if ally == null or not is_instance_valid(ally):
+			continue
+		_apply_troop_unify_to_unit(ally)
 
 func _get_energy_decay_rate() -> float:
 	var level = max(0, int(skill_levels.get("base_eff", 0)))
@@ -2668,6 +2889,7 @@ func _apply_all_skill_effects() -> void:
 	_apply_player_stat_bonuses()
 	_apply_worker_speed_multiplier()
 	_apply_worker_carry_capacity()
+	_apply_troop_unify_to_allies()
 	var obstacles = get_tree().get_nodes_in_group("obstacle")
 	for obj in obstacles:
 		if obj == null or not is_instance_valid(obj):
@@ -2735,6 +2957,11 @@ func try_buy_skill(skill_key: String) -> bool:
 		if _get_rainbow_gold_chance() >= SKILL_CHANCE_CAP:
 			return false
 		cost = 1
+		next = current + 1
+	elif key == "troop_unify":
+		if current >= 5:
+			return false
+		cost = 1 + current
 		next = current + 1
 	else:
 		return false
@@ -2815,7 +3042,6 @@ func _compute_enemy_wave_composition(wave_count: int, wave_index: int) -> Dictio
 	var monk_ratio = 0.0
 	if wave_index >= enemy_monk_unlock_wave:
 		monk_ratio = clamp(enemy_monk_ratio_base + enemy_monk_ratio_per_wave * float(wave_index - enemy_monk_unlock_wave), 0.0, 0.2)
-	var warrior_ratio = max(0.0, 1.0 - lancer_ratio - archer_ratio - monk_ratio)
 	var lancer_count = int(floor(wave_count * lancer_ratio))
 	var archer_count = int(floor(wave_count * archer_ratio))
 	var monk_count = int(floor(wave_count * monk_ratio))
@@ -2857,6 +3083,9 @@ func _apply_enemy_scale(enemy_instance: Node, scale: Dictionary) -> void:
 	if "heal_amount" in enemy_instance:
 		var base_heal = int(enemy_instance.get("heal_amount"))
 		enemy_instance.set("heal_amount", int(round(base_heal * float(scale.get("damage", 1.0)))))
+	if "defense" in enemy_instance:
+		var base_def = int(enemy_instance.get("defense"))
+		enemy_instance.set("defense", int(round(base_def * float(scale.get("damage", 1.0)))))
 
 func _ensure_enemy_group(enemy_instance: Node) -> void:
 	if enemy_instance == null:
@@ -3231,8 +3460,13 @@ func _get_screen_tile_size() -> Vector2i:
 func _get_map_bounds() -> Rect2i:
 	var used_cells = spawn_layer.get_used_cells()
 	if map_width > 0 and map_height > 0:
-		var start = Vector2i(-int(round(map_width / 2.0)), -int(round(map_height / 2.0)))
-		return Rect2i(start, Vector2i(map_width, map_height))
+		var screen_tiles = _get_screen_tile_size()
+		var min_width = max(1, screen_tiles.x + 2)
+		var min_height = max(1, screen_tiles.y + 2)
+		var width = max(map_width, min_width)
+		var height = max(map_height, min_height)
+		var start = Vector2i(-int(round(width / 2.0)), -int(round(height / 2.0)))
+		return Rect2i(start, Vector2i(width, height))
 	if used_cells.is_empty():
 		return Rect2i(Vector2i(-32, -32), Vector2i(64, 64))
 	var min_x = used_cells[0].x

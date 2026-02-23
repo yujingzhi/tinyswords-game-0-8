@@ -38,6 +38,16 @@ var build_warehouse_button: TextureButton
 var build_castle_button: TextureButton
 var build_barracks_button: TextureButton
 var build_tower_button: TextureButton
+var build_tooltip_panel: PanelContainer
+var build_tooltip_label: Label
+var build_hovered_button: Control
+var unit_tooltip_panel: PanelContainer
+var unit_tooltip_label: Label
+var unit_hovered_node: Node
+var build_warehouse_tooltip_text: String = ""
+var build_castle_tooltip_text: String = ""
+var build_barracks_tooltip_text: String = ""
+var build_tower_tooltip_text: String = ""
 var camera_recenter_tween: Tween
 
 var end_overlay: ColorRect
@@ -101,6 +111,11 @@ var barracks_unit_buttons: Dictionary = {}
 var barracks_selected_type: String = ""
 var barracks_action_panel: PanelContainer
 var selected_barracks: Node2D
+var barracks_cost_label: Label
+var barracks_confirm_button: Button
+var barracks_unit_cost_sp: int = 0
+var barracks_unit_missing_sp: int = 0
+var barracks_unit_index: int = 1
 # inventory_data 保存“物品类型 -> 数量”
 
 # --- 🚀 初始化 ---
@@ -815,6 +830,15 @@ func update_player_health(current: int, max_value: int) -> void:
 	if player_health_bar:
 		player_health_bar.max_value = max_value
 		player_health_bar.value = current
+		var player = get_tree().get_first_node_in_group("peao")
+		if player != null:
+			var atk_val = 0
+			var def_val = 0
+			if "attack_damage" in player:
+				atk_val = int(player.get("attack_damage"))
+			if "defense" in player:
+				def_val = int(player.get("defense"))
+			player_health_bar.tooltip_text = "HP " + str(current) + "/" + str(max_value) + "\nATK " + str(atk_val) + "\nDEF " + str(def_val)
 
 func update_player_experience(current: int, to_next: int, level: int) -> void:
 	if player_exp_bar:
@@ -850,7 +874,7 @@ func _build_exp_progress() -> void:
 	exp_level_label.anchor_bottom = 1.0
 	exp_level_label.offset_left = 18.0
 	exp_level_label.offset_top = 0.0
-	exp_level_label.offset_right = 86.0
+	exp_level_label.offset_right = 92.0
 	exp_level_label.offset_bottom = 0.0
 	exp_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	exp_level_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -862,9 +886,9 @@ func _build_exp_progress() -> void:
 	exp_name_label.anchor_top = 0.0
 	exp_name_label.anchor_right = 0.0
 	exp_name_label.anchor_bottom = 1.0
-	exp_name_label.offset_left = 98.0
+	exp_name_label.offset_left = 112.0
 	exp_name_label.offset_top = 0.0
-	exp_name_label.offset_right = 162.0
+	exp_name_label.offset_right = 178.0
 	exp_name_label.offset_bottom = 0.0
 	exp_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	exp_name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -885,6 +909,106 @@ func _build_exp_progress() -> void:
 	exp_need_label.text = "0/0"
 	exp_need_label.label_settings = exp_settings
 	player_exp_bar_root.add_child(exp_need_label)
+
+func _ensure_build_tooltip() -> void:
+	if build_tooltip_panel != null and is_instance_valid(build_tooltip_panel):
+		return
+	build_tooltip_panel = PanelContainer.new()
+	build_tooltip_panel.visible = false
+	build_tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	build_tooltip_panel.custom_minimum_size = Vector2(320, 0)
+	add_child(build_tooltip_panel)
+	build_tooltip_label = Label.new()
+	if wood_label != null and wood_label.label_settings != null:
+		build_tooltip_label.label_settings = wood_label.label_settings
+	build_tooltip_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	build_tooltip_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	build_tooltip_panel.add_child(build_tooltip_label)
+
+func _ensure_unit_tooltip() -> void:
+	if unit_tooltip_panel != null and is_instance_valid(unit_tooltip_panel):
+		return
+	unit_tooltip_panel = PanelContainer.new()
+	unit_tooltip_panel.visible = false
+	unit_tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	unit_tooltip_panel.custom_minimum_size = Vector2(260, 0)
+	add_child(unit_tooltip_panel)
+	unit_tooltip_label = Label.new()
+	if wood_label != null and wood_label.label_settings != null:
+		unit_tooltip_label.label_settings = wood_label.label_settings
+	unit_tooltip_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	unit_tooltip_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	unit_tooltip_panel.add_child(unit_tooltip_label)
+
+func _show_build_tooltip(button: Control, text: String) -> void:
+	_ensure_build_tooltip()
+	build_hovered_button = button
+	if build_tooltip_label != null:
+		build_tooltip_label.text = text
+	build_tooltip_panel.visible = true
+	build_tooltip_panel.reset_size()
+	_position_build_tooltip()
+
+func _hide_build_tooltip(button: Control) -> void:
+	if build_hovered_button != button:
+		return
+	build_hovered_button = null
+	if build_tooltip_panel != null:
+		build_tooltip_panel.visible = false
+
+func _position_build_tooltip() -> void:
+	if build_tooltip_panel == null or build_hovered_button == null:
+		return
+	build_tooltip_panel.reset_size()
+	var rect = build_hovered_button.get_global_rect()
+	var pos = rect.position + Vector2(rect.size.x + 8, -4)
+	var view = get_viewport().get_visible_rect().size
+	var panel_size = build_tooltip_panel.size
+	if pos.x + panel_size.x > view.x:
+		pos.x = rect.position.x - panel_size.x - 8
+	if pos.y + panel_size.y > view.y:
+		pos.y = max(8.0, view.y - panel_size.y - 8)
+	if pos.y < 0.0:
+		pos.y = 8.0
+	build_tooltip_panel.global_position = pos
+
+func _position_unit_tooltip() -> void:
+	if unit_tooltip_panel == null or unit_hovered_node == null or not is_instance_valid(unit_hovered_node):
+		return
+	var node_pos = Vector2.ZERO
+	if unit_hovered_node is Node2D:
+		var node2d := unit_hovered_node as Node2D
+		var canvas_xform = get_viewport().get_canvas_transform()
+		node_pos = canvas_xform * node2d.global_position
+	elif unit_hovered_node is Control:
+		var control := unit_hovered_node as Control
+		node_pos = control.get_global_rect().position
+	unit_tooltip_panel.reset_size()
+	var pos = node_pos + Vector2(24, -40)
+	var view = get_viewport().get_visible_rect().size
+	var panel_size = unit_tooltip_panel.size
+	if pos.x + panel_size.x > view.x:
+		pos.x = node_pos.x - panel_size.x - 12
+	if pos.y + panel_size.y > view.y:
+		pos.y = max(8.0, view.y - panel_size.y - 8)
+	if pos.y < 0.0:
+		pos.y = 8.0
+	unit_tooltip_panel.global_position = pos
+
+func show_unit_tooltip(node: Node, text: String) -> void:
+	_ensure_unit_tooltip()
+	unit_hovered_node = node
+	if unit_tooltip_label != null:
+		unit_tooltip_label.text = text
+	unit_tooltip_panel.visible = true
+	_position_unit_tooltip()
+
+func hide_unit_tooltip(node: Node) -> void:
+	if unit_hovered_node != node:
+		return
+	unit_hovered_node = null
+	if unit_tooltip_panel != null:
+		unit_tooltip_panel.visible = false
 
 func _build_build_buttons() -> void:
 	build_buttons_container = HBoxContainer.new()
@@ -931,6 +1055,10 @@ func _build_build_buttons() -> void:
 	warehouse_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
 	warehouse_label.label_settings = warehouse_label_settings
 	build_warehouse_button.add_child(warehouse_label)
+	build_warehouse_tooltip_text = build_warehouse_button.tooltip_text
+	build_warehouse_button.tooltip_text = ""
+	build_warehouse_button.mouse_entered.connect(func(): _show_build_tooltip(build_warehouse_button, build_warehouse_tooltip_text))
+	build_warehouse_button.mouse_exited.connect(func(): _hide_build_tooltip(build_warehouse_button))
 
 	build_castle_button = TextureButton.new()
 	build_castle_button.custom_minimum_size = Vector2(64, 64)
@@ -960,6 +1088,10 @@ func _build_build_buttons() -> void:
 	castle_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
 	castle_label.label_settings = castle_label_settings
 	build_castle_button.add_child(castle_label)
+	build_castle_tooltip_text = build_castle_button.tooltip_text
+	build_castle_button.tooltip_text = ""
+	build_castle_button.mouse_entered.connect(func(): _show_build_tooltip(build_castle_button, build_castle_tooltip_text))
+	build_castle_button.mouse_exited.connect(func(): _hide_build_tooltip(build_castle_button))
 
 	build_barracks_button = TextureButton.new()
 	build_barracks_button.custom_minimum_size = Vector2(64, 64)
@@ -989,6 +1121,10 @@ func _build_build_buttons() -> void:
 	barracks_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
 	barracks_label.label_settings = barracks_label_settings
 	build_barracks_button.add_child(barracks_label)
+	build_barracks_tooltip_text = build_barracks_button.tooltip_text
+	build_barracks_button.tooltip_text = ""
+	build_barracks_button.mouse_entered.connect(func(): _show_build_tooltip(build_barracks_button, build_barracks_tooltip_text))
+	build_barracks_button.mouse_exited.connect(func(): _hide_build_tooltip(build_barracks_button))
 
 	build_tower_button = TextureButton.new()
 	build_tower_button.custom_minimum_size = Vector2(64, 64)
@@ -1018,6 +1154,10 @@ func _build_build_buttons() -> void:
 	tower_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
 	tower_label.label_settings = tower_label_settings
 	build_tower_button.add_child(tower_label)
+	build_tower_tooltip_text = build_tower_button.tooltip_text
+	build_tower_button.tooltip_text = ""
+	build_tower_button.mouse_entered.connect(func(): _show_build_tooltip(build_tower_button, build_tower_tooltip_text))
+	build_tower_button.mouse_exited.connect(func(): _hide_build_tooltip(build_tower_button))
 
 func _on_build_warehouse_pressed() -> void:
 	get_tree().call_group("level", "request_build_warehouse")
@@ -1059,7 +1199,10 @@ func _build_barracks_panel() -> void:
 	bg.offset_top = 0.0
 	bg.offset_right = 0.0
 	bg.offset_bottom = 0.0
-	bg.texture = load("res://Assets/UI/TechGridBackground.png")
+	var bg_texture: Texture2D = null
+	if ResourceLoader.exists("res://Assets/UI/TechGridBackground.png"):
+		bg_texture = load("res://Assets/UI/TechGridBackground.png") as Texture2D
+	bg.texture = bg_texture
 	barracks_panel.add_child(bg)
 	var vbox = VBoxContainer.new()
 	vbox.anchor_left = 0.0
@@ -1075,6 +1218,11 @@ func _build_barracks_panel() -> void:
 	title.text = "选择兵种"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	vbox.add_child(title)
+	var cost_label = Label.new()
+	cost_label.text = "首次免费"
+	cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(cost_label)
+	barracks_cost_label = cost_label
 	var hbox = HBoxContainer.new()
 	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1117,6 +1265,7 @@ func _build_barracks_panel() -> void:
 	confirm_button.text = "确定"
 	confirm_button.pressed.connect(_on_barracks_confirm_pressed)
 	buttons_row.add_child(confirm_button)
+	barracks_confirm_button = confirm_button
 	var cancel_button = Button.new()
 	cancel_button.text = "取消"
 	cancel_button.pressed.connect(_on_barracks_cancel_pressed)
@@ -1181,6 +1330,7 @@ func open_barracks_unit_select() -> void:
 		_build_barracks_panel()
 	barracks_selected_type = "warrior"
 	_update_barracks_selection_visuals()
+	_refresh_barracks_unit_tooltips()
 	barracks_panel.visible = true
 
 func open_barracks_action_menu(barracks: Node2D) -> void:
@@ -1198,6 +1348,44 @@ func close_barracks_unit_select() -> void:
 	if barracks_panel == null:
 		return
 	barracks_panel.visible = false
+
+func update_barracks_unit_select_cost(cost_sp: int, missing_sp: int, unit_index: int) -> void:
+	barracks_unit_cost_sp = max(0, cost_sp)
+	barracks_unit_missing_sp = max(0, missing_sp)
+	barracks_unit_index = max(1, unit_index)
+	if barracks_cost_label != null:
+		if barracks_unit_cost_sp <= 0:
+			barracks_cost_label.text = "首次免费"
+			barracks_cost_label.modulate = Color(0.9, 1.0, 0.9, 1.0)
+		else:
+			var missing_text = ""
+			if barracks_unit_missing_sp > 0:
+				missing_text = "  缺少 SP" + str(barracks_unit_missing_sp)
+			barracks_cost_label.text = "第" + str(barracks_unit_index) + "名 消耗: SP" + str(barracks_unit_cost_sp) + missing_text
+			barracks_cost_label.modulate = Color(1.0, 0.85, 0.85, 1.0) if barracks_unit_missing_sp > 0 else Color(1, 1, 1, 1)
+	if barracks_confirm_button != null:
+		barracks_confirm_button.disabled = barracks_unit_missing_sp > 0
+	_refresh_barracks_unit_tooltips()
+
+func _refresh_barracks_unit_tooltips() -> void:
+	for key in barracks_unit_buttons.keys():
+		var btn = barracks_unit_buttons[key]
+		if btn == null:
+			continue
+		var unit_name = "兵种"
+		if String(key) == "warrior":
+			unit_name = "战士"
+		elif String(key) == "lancer":
+			unit_name = "枪兵"
+		elif String(key) == "monk":
+			unit_name = "僧侣"
+		if barracks_unit_cost_sp <= 0:
+			btn.tooltip_text = unit_name + "\n首次免费"
+		else:
+			var missing_line = ""
+			if barracks_unit_missing_sp > 0:
+				missing_line = "\n缺少 SP" + str(barracks_unit_missing_sp)
+			btn.tooltip_text = unit_name + "\n第" + str(barracks_unit_index) + "名 消耗: SP" + str(barracks_unit_cost_sp) + missing_line
 
 func _on_barracks_unit_button_pressed(unit_type: String) -> void:
 	barracks_selected_type = unit_type
@@ -1241,9 +1429,11 @@ func update_warehouse_build_button_state(can_build: bool, cost_wood: int, cost_g
 	var missing_text = "缺少: 木" + str(missing_wood) + " 矿" + str(missing_gold) + " 肉" + str(missing_meat) + " SP" + str(missing_sp)
 	var cost_text = "成本: 木" + str(cost_wood) + " 矿" + str(cost_gold) + " 肉" + str(cost_meat) + " SP" + str(cost_sp)
 	if placing:
-		build_warehouse_button.tooltip_text = "左键放置，右键取消\n" + cost_text
+		build_warehouse_tooltip_text = "左键放置，右键取消\n" + cost_text
 	else:
-		build_warehouse_button.tooltip_text = cost_text + "\n" + missing_text
+		build_warehouse_tooltip_text = cost_text + "\n" + missing_text
+	if build_hovered_button == build_warehouse_button:
+		_show_build_tooltip(build_warehouse_button, build_warehouse_tooltip_text)
 	build_warehouse_button.disabled = (not placing) and (not can_build)
 	if placing:
 		build_warehouse_button.modulate = Color(0.9, 1.0, 0.9, 1.0)
@@ -1257,9 +1447,11 @@ func update_castle_build_button_state(can_build: bool, placing: bool) -> void:
 		return
 	var text = "主城 · 仅能建造一座"
 	if placing:
-		build_castle_button.tooltip_text = "左键放置，右键取消\n" + text
+		build_castle_tooltip_text = "左键放置，右键取消\n" + text
 	else:
-		build_castle_button.tooltip_text = text
+		build_castle_tooltip_text = text
+	if build_hovered_button == build_castle_button:
+		_show_build_tooltip(build_castle_button, build_castle_tooltip_text)
 	build_castle_button.disabled = (not placing) and (not can_build)
 	if placing:
 		build_castle_button.modulate = Color(0.9, 1.0, 0.9, 1.0)
@@ -1274,11 +1466,13 @@ func update_barracks_build_button_state(can_build: bool, cost_sp: int, missing_s
 	var missing_text = "缺少 SP" + str(missing_sp)
 	var cost_text = "成本: SP" + str(cost_sp)
 	if reached_max:
-		build_barracks_button.tooltip_text = "兵营数量已达上限"
+		build_barracks_tooltip_text = "兵营数量已达上限"
 	elif placing:
-		build_barracks_button.tooltip_text = "左键放置，右键取消\n" + cost_text
+		build_barracks_tooltip_text = "左键放置，右键取消\n" + cost_text
 	else:
-		build_barracks_button.tooltip_text = cost_text + "\n" + missing_text
+		build_barracks_tooltip_text = cost_text + "\n" + missing_text
+	if build_hovered_button == build_barracks_button:
+		_show_build_tooltip(build_barracks_button, build_barracks_tooltip_text)
 	build_barracks_button.disabled = (not placing) and ((not can_build) or reached_max)
 	if placing:
 		build_barracks_button.modulate = Color(0.9, 1.0, 0.9, 1.0)
@@ -1293,11 +1487,13 @@ func update_tower_build_button_state(can_build: bool, cost_wood: int, cost_gold:
 	var missing_text = "缺少: 木" + str(missing_wood) + " 矿" + str(missing_gold) + " 肉" + str(missing_meat) + " SP" + str(missing_sp)
 	var cost_text = "成本: 木" + str(cost_wood) + " 矿" + str(cost_gold) + " 肉" + str(cost_meat) + " SP" + str(cost_sp)
 	if reached_max:
-		build_tower_button.tooltip_text = "箭塔数量已达上限"
+		build_tower_tooltip_text = "箭塔数量已达上限"
 	elif placing:
-		build_tower_button.tooltip_text = "左键放置，右键取消\n" + cost_text
+		build_tower_tooltip_text = "左键放置，右键取消\n" + cost_text
 	else:
-		build_tower_button.tooltip_text = cost_text + "\n" + missing_text
+		build_tower_tooltip_text = cost_text + "\n" + missing_text
+	if build_hovered_button == build_tower_button:
+		_show_build_tooltip(build_tower_button, build_tower_tooltip_text)
 	build_tower_button.disabled = (not placing) and ((not can_build) or reached_max)
 	if placing:
 		build_tower_button.modulate = Color(0.9, 1.0, 0.9, 1.0)

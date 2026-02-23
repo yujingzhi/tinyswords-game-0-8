@@ -17,6 +17,7 @@ class_name CharacterBase
 @export_dir var texture_folder_path: String = "res://CharacterBase" 
 @export var max_health: int = 10
 @export var attack_damage: int = 1
+@export var defense: int = 0
 @export var max_stamina: int = 100
 @export var stamina_drain_rate: float = 8.0
 @export var stamina_regen_rate: float = 18.0
@@ -435,7 +436,8 @@ func _apply_attack_hit(body: Node2D) -> void:
 
 func take_damage(amount: int) -> void:
 	# 受伤处理：扣血、播放闪烁和缩放特效
-	current_health = max(current_health - amount, 0)
+	var final_damage = max(0, amount - defense)
+	current_health = max(current_health - final_damage, 0)
 	if sprite:
 		if hit_tween and hit_tween.is_running():
 			hit_tween.kill()

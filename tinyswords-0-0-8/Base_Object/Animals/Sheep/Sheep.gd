@@ -37,7 +37,7 @@ signal died(world_position: Vector2)
 @export var worker_harvest_damage: int = 1
 @export var worker_harvest_time: float = 0.6
 @export var worker_pickup_range: float = 16.0
-@export var worker_storage_range: float = 18.0
+@export var worker_storage_range: float = 40.0
 @export var worker_carry_capacity: int = 1
 @export var worker_wander_radius: float = 320.0
 @export var worker_wander_interval: float = 1.2
@@ -590,7 +590,8 @@ func _update_worker(delta: float) -> void:
 			else:
 				worker_storage_target = _pick_nearest_storage()
 		if worker_storage_target != null:
-			if _worker_move_to_position(worker_storage_target.global_position, worker_storage_range):
+			var effective_storage_range = max(worker_storage_range, 48.0)
+			if global_position.distance_to(worker_storage_target.global_position) <= effective_storage_range or _worker_move_to_position(worker_storage_target.global_position, worker_storage_range):
 				get_tree().call_group(&"interface", &"add_item", worker_carry_item_type, worker_carry_count)
 				worker_carry_item_type = ""
 				worker_carry_count = 0

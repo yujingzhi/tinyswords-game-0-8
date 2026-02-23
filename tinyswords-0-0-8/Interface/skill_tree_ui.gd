@@ -36,7 +36,7 @@ const SKILL_BASE_SHEEP_MUTATION_CHANCE: float = 0.02
 const SKILL_BASE_REDWOOD_SEED_CHANCE: float = 0.04
 const SKILL_BASE_RAINBOW_GOLD_CHANCE: float = 0.04
 
-const CATEGORIES = ["主角专精", "羊群物流", "基建能量", "基因变异"]
+const CATEGORIES = ["主角专精", "羊群物流", "基建能量", "基因变异", "兵力统一"]
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -129,7 +129,10 @@ func _build_skill_defs() -> void:
 		# 4. 基因变异
 		{"key": "sheep_mutation", "name": "羊基因变异", "category": "基因变异", "tier": 0, "requires": []},
 		{"key": "redwood_seed", "name": "红木种子掉率", "category": "基因变异", "tier": 1, "requires": ["sheep_mutation"]},
-		{"key": "rainbow_gold", "name": "彩色矿石掉率", "category": "基因变异", "tier": 2, "requires": ["redwood_seed"]}
+		{"key": "rainbow_gold", "name": "彩色矿石掉率", "category": "基因变异", "tier": 2, "requires": ["redwood_seed"]},
+		
+		# 5. 兵力统一
+		{"key": "troop_unify", "name": "统一升级", "category": "兵力统一", "tier": 0, "requires": []}
 	]
 
 func _build_layout() -> void:
@@ -148,7 +151,7 @@ func _build_layout() -> void:
 	
 	# Layout Constants
 	var canvas_width = 1024.0 # Approximate usable width
-	var col_count = 4
+	var col_count = CATEGORIES.size()
 	var col_width = canvas_width / col_count
 	var start_y = 100.0 # Start below headers
 	var row_height = 130.0
@@ -372,6 +375,7 @@ func _show_skill_tooltip(node: Control, key: String) -> void:
 	elif key == "sheep_mutation": desc = "解锁基因变异功能"
 	elif key == "redwood_seed": desc = "提升红木种子掉率"
 	elif key == "rainbow_gold": desc = "提升彩色矿石掉率"
+	elif key == "troop_unify": desc = "提升友军兵种生命、攻击与防御"
 	
 	tooltip_desc.text = desc
 	
