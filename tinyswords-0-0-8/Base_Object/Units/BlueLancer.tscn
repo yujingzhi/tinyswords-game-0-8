@@ -1,0 +1,24 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://Base_Object/Enemies/EnemyMelee.gd" id="1"]
+[ext_resource type="Texture2D" path="res://Assets/Units/Blue/Lancer/Lancer_Idle.png" id="2"]
+[ext_resource type="Texture2D" path="res://Assets/Units/Blue/Lancer/Lancer_Run.png" id="3"]
+[ext_resource type="Texture2D" path="res://Assets/Units/Blue/Lancer/Lancer_Down_Attack.png" id="4"]
+
+[sub_resource type="CircleShape2D" id="1"]
+radius = 8.0
+
+[node name="BlueLancer" type="CharacterBody2D"]
+script = ExtResource("1")
+idle_texture = ExtResource("2")
+move_texture = ExtResource("3")
+attack_texture = ExtResource("4")
+is_ally = true
+use_lancer_directional_attacks = true
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+position = Vector2(0, -8)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+position = Vector2(0, 4)
+shape = SubResource("1")

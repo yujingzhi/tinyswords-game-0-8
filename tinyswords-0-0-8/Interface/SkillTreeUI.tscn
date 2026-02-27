@@ -1,0 +1,186 @@
+[gd_scene format=4 uid="uid://c76j5j3jyd8qu"]
+
+[ext_resource type="Script" path="res://Interface/skill_tree_ui.gd" id="1_kew1u"]
+[ext_resource type="FontFile" uid="uid://ckt0umhc75sre" path="res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf" id="2_y1g6w"]
+[ext_resource type="Texture2D" path="res://Assets/UI/Papers/RegularPaper.png" id="3_mvb0y"]
+[ext_resource type="Texture2D" path="res://Assets/UI/Icons/Icon_09.png" id="4_5k5ob"]
+[ext_resource type="Texture2D" uid="uid://b47a4j4n7mucn" path="res://Interface/Banners/Banner_Slots.png" id="5_1neai"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = ExtResource("2_y1g6w")
+font_size = 34
+outline_size = 2
+outline_color = Color(0, 0, 0, 0.7)
+font_color = Color(0.18, 0.14, 0.1, 1)
+
+[sub_resource type="LabelSettings" id="LabelSettings_ui"]
+font = ExtResource("2_y1g6w")
+font_size = 18
+outline_size = 2
+outline_color = Color(0, 0, 0, 0.7)
+font_color = Color(0.18, 0.14, 0.1, 1)
+
+[node name="SkillTreeUI" type="Control"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_kew1u")
+
+[node name="Overlay" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0)
+mouse_filter = 2
+
+[node name="Paper" type="NinePatchRect" parent="Overlay"]
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -576
+offset_top = -320
+offset_right = 576
+offset_bottom = 320
+texture = ExtResource("3_mvb0y")
+patch_margin_left = 64
+patch_margin_top = 64
+patch_margin_right = 64
+patch_margin_bottom = 64
+axis_stretch_horizontal = 1
+axis_stretch_vertical = 1
+
+[node name="Title" type="Label" parent="Overlay/Paper"]
+anchor_left = 0.5
+anchor_top = 0.0
+anchor_right = 0.5
+anchor_bottom = 0.0
+offset_left = -320.0
+offset_top = 18.0
+offset_right = 320.0
+offset_bottom = 58.0
+text = "科技面板"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="CloseButton" type="TextureButton" parent="Overlay/Paper"]
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 0.0
+offset_left = -62.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 62.0
+modulate = Color(1, 0.2, 0.2, 1)
+texture_normal = ExtResource("4_5k5ob")
+
+[node name="SPLabel" type="Label" parent="Overlay/Paper"]
+offset_left = 24.0
+offset_top = 22.0
+offset_right = 260.0
+offset_bottom = 46.0
+text = "可用 SP: 0"
+label_settings = SubResource("LabelSettings_ui")
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="Content" type="Control" parent="Overlay/Paper"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 64.0
+offset_top = 80.0
+offset_right = -64.0
+offset_bottom = -64.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="TreeCanvas" type="Control" parent="Overlay/Paper/Content"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="SkillNode_Example" type="Control" parent="Overlay/Paper/Content/TreeCanvas"]
+layout_mode = 1
+anchors_preset = 0
+offset_left = 100.0
+offset_top = 100.0
+offset_right = 100.0
+offset_bottom = 100.0
+
+[node name="Button" type="TextureButton" parent="Overlay/Paper/Content/TreeCanvas/SkillNode_Example"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 0
+offset_left = -32.0
+offset_top = -32.0
+offset_right = 32.0
+offset_bottom = 32.0
+texture_normal = ExtResource("5_1neai")
+ignore_texture_size = true
+stretch_mode = 0
+
+[node name="Icon" type="TextureRect" parent="Overlay/Paper/Content/TreeCanvas/SkillNode_Example/Button"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -20.0
+offset_top = -20.0
+offset_right = 20.0
+offset_bottom = 20.0
+grow_horizontal = 2
+grow_vertical = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Label" type="Label" parent="Overlay/Paper/Content/TreeCanvas/SkillNode_Example"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -80.0
+offset_top = 40.0
+offset_right = 80.0
+offset_bottom = 64.0
+grow_horizontal = 2
+text = "示例技能"
+label_settings = SubResource("LabelSettings_ui")
+horizontal_alignment = 1
+
+
+
+[node name="Tooltip" type="PanelContainer" parent="Overlay/Paper"]
+visible = false
+offset_left = 420.0
+offset_top = 140.0
+offset_right = 760.0
+offset_bottom = 260.0
+
+[node name="VBox" type="VBoxContainer" parent="Overlay/Paper/Tooltip"]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+theme_override_constants/separation = 6
+
+[node name="Name" type="Label" parent="Overlay/Paper/Tooltip/VBox"]
+text = "技能名称"
+label_settings = SubResource("LabelSettings_ui")
+
+[node name="Cost" type="Label" parent="Overlay/Paper/Tooltip/VBox"]
+text = "消耗 SP: 0"
+label_settings = SubResource("LabelSettings_ui")
+
+[node name="Desc" type="Label" parent="Overlay/Paper/Tooltip/VBox"]
+text = "技能描述"
+label_settings = SubResource("LabelSettings_ui")
+autowrap_mode = 3

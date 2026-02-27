@@ -19,6 +19,8 @@ const ITEM_TEXTURES: Dictionary = {
 	# 未来扩展示范： "stone": preload("res://Base_Object/Stone.png")
 }
 # ITEM_TEXTURES 是“物品类型 -> 贴图”映射表
+var custom_item_modulate: Color = Color(1, 1, 1, 1)
+var has_custom_item_modulate: bool = false
 var pickup_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Dust_01.png"), "frames": 8},
 	{"texture": preload("res://Assets/FX/Particles/Dust_02.png"), "frames": 10},
@@ -34,16 +36,25 @@ var pickup_fx_defs: Array[Dictionary] = [
 
 @onready var audio_player: AudioStreamPlayer2D = $AudioPlayer
 @onready var sprite: Sprite2D = $Sprite2D
+@onready var text_label: Label = $TextLabel
 @onready var pickup_area: Area2D = $Area2D 
-# pickup_area 用于检测玩家接近
+var pickup_ready: bool = false
+var spawn_origin: Vector2 = Vector2.ZERO
 
 func _ready() -> void:
-	# 初始化碰撞层，并连接拾取回调
-	set_deferred("collision_mask", 1) 
+	set_deferred("collision_layer", 0)
+	set_deferred("collision_mask", 0)
 	add_to_group(&"pickup_item")
-	
+	spawn_origin = global_position
 	if is_instance_valid(pickup_area) and not pickup_area.body_entered.is_connected(_on_pickup_area_body_entered):
 		pickup_area.body_entered.connect(_on_pickup_area_body_entered)
+	if is_instance_valid(pickup_area):
+		if is_static_spawn:
+			pickup_ready = true
+		else:
+			pickup_area.monitoring = false
+			var pickup_timer = get_tree().create_timer(0.45)
+			pickup_timer.timeout.connect(_enable_pickup)
 		
 	_refresh_texture()
 	# 非静态生成时增加弹跳与缩放效果
@@ -63,15 +74,110 @@ func _ready() -> void:
 			var jump_tween: Tween = create_tween()
 			jump_tween.tween_property(sprite, "offset:y", -45.0, 0.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 			jump_tween.tween_property(sprite, "offset:y", 0.0, 0.2).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+		var snap_timer = get_tree().create_timer(0.5)
+		snap_timer.timeout.connect(_final_snap_to_land)
 
 func _refresh_texture() -> void:
 	# 根据 item_type 切换贴图
 	if is_instance_valid(sprite):
-		# 🌟 优化 2 配合：直接从字典取图。如果找不到对应的，默认给 wood (防错设计)
-		sprite.texture = ITEM_TEXTURES.get(item_type, ITEM_TEXTURES["wood"])
+		if item_type != "rainbow_gold":
+			has_custom_item_modulate = false
+			custom_item_modulate = Color(1, 1, 1, 1)
+		if item_type == "redwood_seed":
+			sprite.texture = null
+			sprite.modulate = Color(1, 1, 1, 1)
+			if text_label:
+				text_label.text = "红木种子"
+				text_label.modulate = Color(1.0, 0.35, 0.35, 1.0)
+				text_label.visible = true
+		elif item_type == "redwood":
+			sprite.texture = ITEM_TEXTURES.get("wood", null)
+			sprite.modulate = Color(1.0, 0.25, 0.25, 1.0)
+			if text_label:
+				text_label.visible = false
+		elif item_type == "red_meat":
+			sprite.texture = ITEM_TEXTURES.get("meat", null)
+			sprite.modulate = Color(1.0, 0.25, 0.25, 1.0)
+			if text_label:
+				text_label.visible = false
+		elif item_type == "rainbow_gold":
+			sprite.texture = ITEM_TEXTURES.get("gold", null)
+			if not has_custom_item_modulate:
+				has_custom_item_modulate = true
+				custom_item_modulate = Color.from_hsv(randf(), 0.75, 1.0, 1.0)
+			sprite.modulate = custom_item_modulate
+			if text_label:
+				text_label.visible = false
+		elif item_type == "lamb":
+			sprite.texture = null
+			sprite.modulate = Color(1, 1, 1, 1)
+			if text_label:
+				text_label.text = "羊仔"
+				text_label.modulate = Color(1.0, 1.0, 1.0, 1.0)
+				text_label.visible = true
+		else:
+			# 🌟 优化 2 配合：直接从字典取图。如果找不到对应的，默认给 wood (防错设计)
+			sprite.texture = ITEM_TEXTURES.get(item_type, ITEM_TEXTURES["wood"])
+			sprite.modulate = Color(1, 1, 1, 1)
+			if text_label:
+				text_label.visible = false
+
+func _enable_pickup() -> void:
+	pickup_ready = true
+	if is_instance_valid(pickup_area):
+		pickup_area.monitoring = true
+
+func _get_level_node() -> Node:
+	return get_tree().get_first_node_in_group("level")
+
+func _final_snap_to_land() -> void:
+	var level = _get_level_node()
+	if level == null:
+		return
+	if not (level.has_method("_world_to_cell") and level.has_method("_cell_to_world") and level.has_method("_is_grass_cell") and level.has_method("_is_water_cell")):
+		return
+	var current_pos: Vector2 = global_position
+	var cell = level.call("_world_to_cell", current_pos)
+	if not (cell is Vector2i):
+		return
+	if not level.call("_is_water_cell", cell):
+		return
+	var best_cell: Vector2i = cell
+	var best_dist: float = INF
+	var max_radius: int = 4
+	for r in range(1, max_radius + 1):
+		for dx in range(-r, r + 1):
+			for dy in range(-r, r + 1):
+				var c: Vector2i = Vector2i(cell.x + dx, cell.y + dy)
+				if not level.call("_is_grass_cell", c):
+					continue
+				if level.call("_is_water_cell", c):
+					continue
+				var world_pos = level.call("_cell_to_world", c)
+				if not (world_pos is Vector2):
+					continue
+				var d = (world_pos as Vector2).distance_to(current_pos)
+				if d < best_dist:
+					best_dist = d
+					best_cell = c
+		if best_dist < INF:
+			break
+	if best_dist == INF:
+		return
+	var target_pos = level.call("_cell_to_world", best_cell)
+	if not (target_pos is Vector2):
+		return
+	var target: Vector2 = target_pos
+	if target.distance_to(current_pos) > 64.0:
+		return
+	if target != current_pos:
+		linear_velocity = Vector2.ZERO
+		var tween: Tween = create_tween()
+		tween.tween_property(self, "global_position", target, 0.2).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _on_pickup_area_body_entered(body: Node2D) -> void:
-	# 🌟 优化 5：使用 &"字符串" (StringName) 提升底层分组查询性能
+	if not pickup_ready:
+		return
 	if body.has_method("receive_pickup"):
 		var accepted = body.call("receive_pickup", item_type)
 		if accepted:
@@ -117,10 +223,26 @@ func _animate_pickup_and_free(target: Node2D) -> void:
 func spawn_floating_text() -> void:
 	# 创建飘字提示 +1
 	var label: Label = Label.new()
-	label.text = "+1" 
+	if item_type == "redwood_seed":
+		label.text = "+红木种子"
+	elif item_type == "redwood":
+		label.text = "+红木+5"
+	elif item_type == "red_meat":
+		label.text = "+红肉+5"
+	elif item_type == "rainbow_gold":
+		label.text = "+彩矿+5"
+	elif item_type == "lamb":
+		label.text = "+羊仔"
+	else:
+		label.text = "+1"
 	var settings: LabelSettings = LabelSettings.new()
 	settings.font_size = 24                  
-	settings.font_color = Color(0.2, 1.0, 0.2) 
+	if item_type == "redwood_seed" or item_type == "redwood" or item_type == "red_meat":
+		settings.font_color = Color(1.0, 0.35, 0.35)
+	elif item_type == "rainbow_gold":
+		settings.font_color = Color(0.95, 0.85, 1.0)
+	else:
+		settings.font_color = Color(0.2, 1.0, 0.2) 
 	settings.outline_size = 6                
 	settings.outline_color = Color.BLACK      
 	label.label_settings = settings

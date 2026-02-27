@@ -26,6 +26,8 @@ signal destroyed(object_type: String, drop_type: String, world_position: Vector2
 @export var drop_item_scene: PackedScene # 掉落物预制体 (PhysicItem.tscn)
 @export var drop_item_texture: Texture2D # (保留原有配置)
 # drop_item_scene 决定掉落物实例的类型
+@export var redwood_seed_drop_chance: float = 0.04
+@export var redwood_seed_item_type: String = "redwood_seed"
 
 # --- 🔗 节点引用 ---
 @onready var anim_player: AnimationPlayer = $AnimationPlayer
@@ -89,6 +91,11 @@ func die() -> void:
 				# 既然没有 initialize_item，我们直接给它的属性赋值！
 				if "item_type" in drop_instance:
 					drop_instance.item_type = self.drop_item_type 
+				if drop_item_type == "rainbow_gold" and sprite != null and is_instance_valid(sprite):
+					if "has_custom_item_modulate" in drop_instance:
+						drop_instance.has_custom_item_modulate = true
+					if "custom_item_modulate" in drop_instance:
+						drop_instance.custom_item_modulate = sprite.modulate
 				
 				# ✨✨✨ 核心解法 2：强制它立刻换衣服 ✨✨✨
 				# 防止它拿着 "gold" 的身份还穿着 "wood" 的图
@@ -96,6 +103,31 @@ func die() -> void:
 					drop_instance.call_deferred("_refresh_texture")
 					
 				var random_offset = Vector2(randf_range(-15.0, 15.0), randf_range(-15.0, 15.0))
-				drop_instance.set_deferred("global_position", global_position + random_offset)
+				var drop_pos = _snap_drop_position(global_position + random_offset, global_position, 32.0)
+				drop_instance.set_deferred("global_position", drop_pos)
+		if type == "Tree" and drop_item_type == "wood" and redwood_seed_drop_chance > 0.0 and randf() < redwood_seed_drop_chance:
+			var seed_instance = drop_item_scene.instantiate()
+			if seed_instance:
+				get_parent().call_deferred("add_child", seed_instance)
+				if "item_type" in seed_instance:
+					seed_instance.item_type = redwood_seed_item_type
+				if seed_instance.has_method("_refresh_texture"):
+					seed_instance.call_deferred("_refresh_texture")
+				var seed_offset = Vector2(randf_range(-12.0, 12.0), randf_range(-12.0, 12.0))
+				var seed_pos = _snap_drop_position(global_position + seed_offset, global_position, 28.0)
+				seed_instance.set_deferred("global_position", seed_pos)
 				
 	queue_free()
+
+func _get_level_node() -> Node:
+	return get_tree().get_first_node_in_group("level")
+
+func _snap_drop_position(world_pos: Vector2, origin_world_pos: Vector2, radius: float) -> Vector2:
+	var level = _get_level_node()
+	if level == null:
+		return world_pos
+	if level.has_method("_snap_position_to_land"):
+		return level.call("_snap_position_to_land", world_pos, origin_world_pos, radius)
+	if level.has_method("_pick_land_position_near"):
+		return level.call("_pick_land_position_near", origin_world_pos, radius, 48)
+	return world_pos

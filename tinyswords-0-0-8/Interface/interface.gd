@@ -7,11 +7,66 @@ class_name Interface # 注册大管家
 @onready var inventory_panel: TileMapLayer = $TileMapLayer
 @onready var grid_container: GridContainer = $TileMapLayer/InventoryGrid
 @onready var player_health_bar: TextureProgressBar = $PlayerHealthBar/Fill
-@onready var player_stamina_bar: TextureProgressBar = $PlayerStaminaBar/Fill
+@onready var player_exp_bar_root: TextureProgressBar = $PlayerStaminaBar
+@onready var player_exp_bar: TextureProgressBar = $PlayerStaminaBar/Fill
 @onready var quickbar_container: HBoxContainer = $QuickBar
 @onready var wood_label: Label = $ResourceHUD/WoodLabel
 @onready var gold_label: Label = $ResourceHUD/GoldLabel
 @onready var meat_label: Label = $ResourceHUD/MeatLabel
+@onready var save_button: TextureButton = $TopBar/SaveButton
+@onready var tech_ui: Control = $SkillTreeUI
+
+var meta_hud_panel: PanelContainer
+var meta_hud_container: VBoxContainer
+var wave_meta_label: Label
+var energy_meta_label: Label
+var cpu_meta_label: Label
+var logistics_meta_label: Label
+var buildings_meta_label: Label
+var exp_meta_label: Label
+var warehouse_meta_label: Label
+var objective_meta_label: Label
+var hint_meta_label: Label
+var meta_hud_toggle_button: Button
+var meta_hud_expanded: bool = false
+var meta_hud_anim_tween: Tween
+var exp_level_label: Label
+var exp_name_label: Label
+var exp_need_label: Label
+var build_buttons_container: HBoxContainer
+var build_warehouse_button: TextureButton
+var build_castle_button: TextureButton
+var build_barracks_button: TextureButton
+var build_tower_button: TextureButton
+var build_tooltip_panel: PanelContainer
+var build_tooltip_label: Label
+var build_hovered_button: Control
+var unit_tooltip_panel: PanelContainer
+var unit_tooltip_label: Label
+var unit_hovered_node: Node
+var build_warehouse_tooltip_text: String = ""
+var build_castle_tooltip_text: String = ""
+var build_barracks_tooltip_text: String = ""
+var build_tower_tooltip_text: String = ""
+var camera_recenter_tween: Tween
+
+var end_overlay: ColorRect
+var end_title_label: Label
+var end_stats_label: Label
+var restart_button: Button
+var quit_button: Button
+var save_slot_select: OptionButton
+var save_slot_edit: LineEdit
+var save_status_label: Label
+var save_overwrite_button: Button
+var save_as_button: Button
+var save_load_button: Button
+var save_rename_button: Button
+var save_popup_overlay: ColorRect
+var save_popup_panel: PanelContainer
+var save_popup_tween: Tween
+var save_overwrite_tween: Tween
+var save_load_tween: Tween
 # 这些节点分别对应 UI 中的背包、格子和血条等元素
 
 # --- 🔥 配置区域 ---
@@ -20,10 +75,12 @@ class_name Interface # 注册大管家
 # slot_scene 是背包格子实例的预制体
 
 # 字典：教 UI 如何将 "wood" 映射成对应的图片
+@onready var lamb_icon: Texture2D = _build_lamb_icon()
 @onready var item_icons: Dictionary = {
 	"wood": preload("res://Base_Object/Wood_Resource.png"), 
 	"gold": preload("res://Base_Object/Gold_Resource.png"),
-	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png")
+	"meat": preload("res://Base_Object/Resources/Meat/Meat_Resource.png"),
+	"lamb": lamb_icon
 }
 # 用物品类型字符串映射到图标贴图
 var consume_fx_defs: Array[Dictionary] = [
@@ -39,17 +96,39 @@ var origin_pos: Vector2
 var total_slots: int = 21 # 背包总共有多少格子
 const SLOT_SIZE = Vector2(96, 96)
 const QUICKBAR_SIZE = Vector2(72, 72)
+const META_HUD_MARGIN = 12.0
+const META_HUD_SIZE_EXPANDED = Vector2(520, 260)
+const META_HUD_SIZE_COLLAPSED = Vector2(320, 56)
+const META_HUD_SCALE_EXPANDED = Vector2(1.0, 1.0)
+const META_HUD_SCALE_COLLAPSED = Vector2(0.97, 0.97)
 # SLOT_SIZE/QUICKBAR_SIZE 控制格子的最小显示尺寸
 
 # 💡【核心数据】这是你真正的背包，所有加减全在这发生
 var inventory_data: Dictionary = {} 
-var quickbar_items: Array[String] = ["", "", "", ""]
+var quickbar_items: Array[String] = ["", "", "", "", ""]
+var barracks_panel: PanelContainer
+var barracks_unit_buttons: Dictionary = {}
+var barracks_selected_type: String = ""
+var barracks_action_panel: PanelContainer
+var selected_barracks: Node2D
+var barracks_cost_label: Label
+var barracks_confirm_button: Button
+var barracks_unit_cost_sp: int = 0
+var barracks_unit_missing_sp: int = 0
+var barracks_unit_index: int = 1
 # inventory_data 保存“物品类型 -> 数量”
 
 # --- 🚀 初始化 ---
 func _ready() -> void:
 	# 注册到 interface 分组，方便其他脚本调用 UI 更新
 	add_to_group("interface")
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	var avatar = get_node_or_null("Avatar") as Control
+	if avatar:
+		avatar.mouse_filter = Control.MOUSE_FILTER_STOP
+		avatar.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		if not avatar.gui_input.is_connected(_on_avatar_gui_input):
+			avatar.gui_input.connect(_on_avatar_gui_input)
 	
 	# 💡 引擎哲学：游戏一开始，默认不拿任何武器 (-1 代表空手)
 	update_weapon_indicator(-1) 
@@ -62,9 +141,43 @@ func _ready() -> void:
 		refresh_inventory_ui()
 	_refresh_quickbar_ui()
 	_update_resource_hud()
-	call_deferred("_sync_player_bars")
+	_build_meta_hud()
+	_build_barracks_panel()
+	_build_exp_progress()
+	_build_build_buttons()
+	_build_end_overlay()
+	if save_button:
+		save_button.visible = false
+		save_button.disabled = true
+	call_deferred("_sync_player_health")
+
+func _build_lamb_icon() -> Texture2D:
+	var texture: Texture2D = preload("res://Base_Object/Animals/Sheep/Sheep_Idle.png")
+	var frame_count = 6
+	var frame_width = texture.get_width() / float(frame_count)
+	var atlas = AtlasTexture.new()
+	atlas.atlas = texture
+	atlas.region = Rect2(0, 0, frame_width, texture.get_height())
+	return atlas
 
 func _unhandled_input(event: InputEvent) -> void:
+	if end_overlay and end_overlay.visible:
+		if event is InputEventKey:
+			var key_event := event as InputEventKey
+			if key_event.pressed and not key_event.echo:
+				if key_event.keycode == KEY_R:
+					_restart_run()
+				elif key_event.keycode == KEY_Q or key_event.keycode == KEY_ESCAPE:
+					_quit_run()
+		return
+	if event is InputEventKey:
+		var key_event_save := event as InputEventKey
+		if key_event_save.pressed and not key_event_save.echo and key_event_save.keycode == KEY_F11:
+			var mode = DisplayServer.window_get_mode()
+			var next_mode = DisplayServer.WINDOW_MODE_WINDOWED if mode == DisplayServer.WINDOW_MODE_FULLSCREEN else DisplayServer.WINDOW_MODE_FULLSCREEN
+			DisplayServer.window_set_mode(next_mode)
+			get_viewport().set_input_as_handled()
+			return
 	# 处理背包开关与快捷栏按键
 	if event.is_action_pressed("ui_cancel"):
 		if inventory_panel and inventory_panel.visible and inventory_panel.modulate.a > 0.1:
@@ -80,11 +193,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		use_quick_slot(2)
 	elif event.is_action_pressed("quickbar_4"):
 		use_quick_slot(3)
+	elif event.is_action_pressed("quickbar_5"):
+		use_quick_slot(4)
+
+func _on_avatar_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_recenter_camera_on_player()
 
 # --- 📥 数据更新与接收 ---
 # 这个方法会被外界（如 PhysicItem）呼叫
 func add_item(item_type: String, amount: int) -> void:
 	# 增加某种物品数量
+	if item_type == "redwood":
+		item_type = "wood"
+		amount *= 5
+	elif item_type == "red_meat":
+		item_type = "meat"
+		amount *= 5
+	elif item_type == "rainbow_gold":
+		item_type = "gold"
+		amount *= 5
 	# 1. 如果是第一次捡到这玩意，给字典开个户
 	if not inventory_data.has(item_type):
 		inventory_data[item_type] = 0
@@ -124,6 +252,7 @@ func refresh_inventory_ui() -> void:
 		else:
 			# 种类发完了，剩下的全是空格子
 			slot.update_slot(null, 0, "")
+	_auto_fill_quickbar_from_inventory()
 	_refresh_quickbar_ui()
 	_update_resource_hud()
 
@@ -134,6 +263,535 @@ func _update_resource_hud() -> void:
 		gold_label.text = "矿石 " + str(inventory_data.get("gold", 0))
 	if meat_label:
 		meat_label.text = "肉 " + str(inventory_data.get("meat", 0))
+
+func update_meta_hud(waves_survived: int, next_wave_in: float, enemies_alive: int, _next_wave_size: int, energy_points: float, energy_decay_per_sec: float, _energy_consumes_wood: bool, worker_speed_multiplier: float, logistics_enabled: bool, _map_seed: int, objective_text: String, hint_text: String, player_level: int, player_exp: int, exp_to_next: int, skill_points: int, warehouse_count: int, workers_current: int, workers_cap: int, next_warehouse_wood: int, next_warehouse_gold: int, next_warehouse_meat: int, next_warehouse_sp: int, placing_warehouse: bool, allies_alive: int, castle_count: int, barracks_count: int, tower_count: int) -> void:
+	if meta_hud_container == null:
+		return
+	if wave_meta_label:
+		wave_meta_label.text = "第" + str(waves_survived) + "波  ·  下波 " + str(int(ceil(next_wave_in))) + "s  ·  敌人 " + str(enemies_alive) + "  ·  我军 " + str(allies_alive)
+	if energy_meta_label:
+		energy_meta_label.text = "能量 " + str(int(round(energy_points))) + "  (-" + str(snapped(energy_decay_per_sec, 0.1)) + "/s)"
+	if cpu_meta_label:
+		cpu_meta_label.text = "物流 " + ("在线" if logistics_enabled else "离线") + "  ·  工人速度 x" + str(snapped(worker_speed_multiplier, 0.01))
+	if logistics_meta_label:
+		var place_text = "  ·  摆放中" if placing_warehouse else ""
+		logistics_meta_label.text = "仓库 " + str(warehouse_count) + "  ·  工人 " + str(workers_current) + "/" + str(workers_cap) + place_text
+	if buildings_meta_label:
+		buildings_meta_label.text = "建筑 主城 " + str(castle_count) + "  ·  兵营 " + str(barracks_count) + "  ·  箭塔 " + str(tower_count) + "  ·  仓库 " + str(warehouse_count)
+	if exp_meta_label:
+		exp_meta_label.text = "Lv." + str(player_level) + "  ·  经验 " + str(player_exp) + "/" + str(exp_to_next) + "  ·  SP " + str(max(0, skill_points))
+	if warehouse_meta_label:
+		warehouse_meta_label.text = "建造仓库: 木" + str(next_warehouse_wood) + "  矿" + str(next_warehouse_gold) + "  肉" + str(next_warehouse_meat) + "  SP " + str(max(0, next_warehouse_sp))
+	if tech_ui != null and is_instance_valid(tech_ui) and tech_ui.has_method("set_skill_points"):
+		tech_ui.call("set_skill_points", max(0, skill_points))
+	if objective_meta_label:
+		var t = _strip_hud_prefix(objective_text, "目标:")
+		t = _strip_hud_prefix(t, "目标：")
+		objective_meta_label.text = "任务 " + t.strip_edges()
+	if hint_meta_label:
+		var h = _strip_hud_prefix(hint_text, "建议:")
+		h = _strip_hud_prefix(h, "建议：")
+		h = _strip_hud_prefix(h, "提示:")
+		h = _strip_hud_prefix(h, "提示：")
+		hint_meta_label.text = "提示 " + h.strip_edges()
+
+func show_end_screen(won: bool, stats: Dictionary) -> void:
+	if end_overlay == null:
+		return
+	var title = "胜利" if won else "失败"
+	if end_title_label:
+		end_title_label.text = title
+	if end_stats_label:
+		var time_sec = float(stats.get("time_sec", 0.0))
+		var waves = int(stats.get("waves_survived", 0))
+		var kills = int(stats.get("enemy_kills", 0))
+		var sp = int(stats.get("skill_points", 0))
+		var worker_speed = float(stats.get("worker_speed_multiplier", 1.0))
+		var map_seed = int(stats.get("seed", 0))
+		var resources = stats.get("resources", {})
+		var wood = 0
+		var gold = 0
+		var meat = 0
+		if resources is Dictionary:
+			wood = int(resources.get("wood", 0))
+			gold = int(resources.get("gold", 0))
+			meat = int(resources.get("meat", 0))
+		end_stats_label.text = "坚持波数: " + str(waves) + "\n击杀敌人: " + str(kills) + "\nSP: " + str(sp) + "  |  工人速度 x" + str(snapped(worker_speed, 0.01)) + "\n用时: " + _format_time(time_sec) + "\n地图种子: " + str(map_seed) + "\n资源: 木 " + str(wood) + " | 矿 " + str(gold) + " | 肉 " + str(meat) + "\n\nR 重开 | Q/ESC 退出"
+	end_overlay.visible = true
+
+func _build_meta_hud() -> void:
+	meta_hud_panel = PanelContainer.new()
+	meta_hud_panel.name = "MetaHUDPanel"
+	meta_hud_panel.anchor_left = 1.0
+	meta_hud_panel.anchor_top = 1.0
+	meta_hud_panel.anchor_right = 1.0
+	meta_hud_panel.anchor_bottom = 1.0
+	_set_meta_hud_panel_size(META_HUD_SIZE_EXPANDED)
+	meta_hud_panel.scale = META_HUD_SCALE_EXPANDED
+	meta_hud_panel.modulate = Color(1, 1, 1, 0.88)
+	meta_hud_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	meta_hud_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(meta_hud_panel)
+	meta_hud_container = VBoxContainer.new()
+	meta_hud_container.name = "MetaHUD"
+	meta_hud_container.anchor_left = 0.0
+	meta_hud_container.anchor_top = 0.0
+	meta_hud_container.anchor_right = 1.0
+	meta_hud_container.anchor_bottom = 1.0
+	meta_hud_container.offset_left = 10.0
+	meta_hud_container.offset_top = 10.0
+	meta_hud_container.offset_right = -10.0
+	meta_hud_container.offset_bottom = -10.0
+	meta_hud_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	meta_hud_container.process_mode = Node.PROCESS_MODE_ALWAYS
+	meta_hud_panel.add_child(meta_hud_container)
+	var hud_settings = LabelSettings.new()
+	hud_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	hud_settings.font_size = 18
+	hud_settings.outline_size = 5
+	hud_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
+	wave_meta_label = Label.new()
+	energy_meta_label = Label.new()
+	cpu_meta_label = Label.new()
+	logistics_meta_label = Label.new()
+	buildings_meta_label = Label.new()
+	exp_meta_label = Label.new()
+	warehouse_meta_label = Label.new()
+	objective_meta_label = Label.new()
+	hint_meta_label = Label.new()
+	wave_meta_label.text = "第0波  ·  下波 0s  ·  敌人 0"
+	energy_meta_label.text = "能量 0  (-0/s)"
+	cpu_meta_label.text = "物流 离线  ·  工人速度 x1"
+	logistics_meta_label.text = "仓库 0  ·  工人 0/0"
+	exp_meta_label.text = "Lv.1  ·  经验 0/0  ·  SP 0"
+	buildings_meta_label.text = "建筑 主城 0  ·  兵营 0  ·  箭塔 0  ·  仓库 0"
+	warehouse_meta_label.text = "建造仓库: 木0  矿0  肉0  SP 0"
+	objective_meta_label.text = "任务 "
+	hint_meta_label.text = "提示 "
+	wave_meta_label.label_settings = hud_settings
+	energy_meta_label.label_settings = hud_settings
+	cpu_meta_label.label_settings = hud_settings
+	logistics_meta_label.label_settings = hud_settings
+	buildings_meta_label.label_settings = hud_settings
+	exp_meta_label.label_settings = hud_settings
+	warehouse_meta_label.label_settings = hud_settings
+	objective_meta_label.label_settings = hud_settings
+	hint_meta_label.label_settings = hud_settings
+	meta_hud_container.add_child(wave_meta_label)
+	meta_hud_container.add_child(energy_meta_label)
+	meta_hud_container.add_child(cpu_meta_label)
+	meta_hud_container.add_child(logistics_meta_label)
+	meta_hud_container.add_child(buildings_meta_label)
+	meta_hud_container.add_child(exp_meta_label)
+	meta_hud_container.add_child(warehouse_meta_label)
+	meta_hud_container.add_child(objective_meta_label)
+	meta_hud_container.add_child(hint_meta_label)
+	meta_hud_toggle_button = Button.new()
+	meta_hud_toggle_button.text = "收起"
+	meta_hud_toggle_button.focus_mode = Control.FOCUS_NONE
+	meta_hud_toggle_button.anchor_left = 1.0
+	meta_hud_toggle_button.anchor_top = 0.0
+	meta_hud_toggle_button.anchor_right = 1.0
+	meta_hud_toggle_button.anchor_bottom = 0.0
+	meta_hud_toggle_button.offset_left = -74.0
+	meta_hud_toggle_button.offset_top = 8.0
+	meta_hud_toggle_button.offset_right = -10.0
+	meta_hud_toggle_button.offset_bottom = 34.0
+	meta_hud_toggle_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	meta_hud_toggle_button.add_theme_font_override("font", hud_settings.font)
+	meta_hud_toggle_button.add_theme_font_size_override("font_size", 16)
+	meta_hud_panel.add_child(meta_hud_toggle_button)
+	meta_hud_toggle_button.pressed.connect(_toggle_meta_hud)
+	_apply_meta_hud_state(false)
+
+func _toggle_meta_hud() -> void:
+	meta_hud_expanded = not meta_hud_expanded
+	_apply_meta_hud_state(true)
+
+func _apply_meta_hud_state(animated: bool) -> void:
+	if meta_hud_panel == null:
+		return
+	var target_size = META_HUD_SIZE_EXPANDED if meta_hud_expanded else META_HUD_SIZE_COLLAPSED
+	var target_scale = META_HUD_SCALE_EXPANDED if meta_hud_expanded else META_HUD_SCALE_COLLAPSED
+	var target_modulate = Color(1, 1, 1, 0.88) if meta_hud_expanded else Color(1, 1, 1, 0.45)
+	if meta_hud_toggle_button:
+		meta_hud_toggle_button.text = "收起" if meta_hud_expanded else "展开"
+	if wave_meta_label:
+		wave_meta_label.visible = true
+	if energy_meta_label:
+		energy_meta_label.visible = meta_hud_expanded
+	if cpu_meta_label:
+		cpu_meta_label.visible = meta_hud_expanded
+	if logistics_meta_label:
+		logistics_meta_label.visible = meta_hud_expanded
+	if exp_meta_label:
+		exp_meta_label.visible = meta_hud_expanded
+	if warehouse_meta_label:
+		warehouse_meta_label.visible = meta_hud_expanded
+	if objective_meta_label:
+		objective_meta_label.visible = meta_hud_expanded
+	if hint_meta_label:
+		hint_meta_label.visible = meta_hud_expanded
+	if meta_hud_anim_tween != null and meta_hud_anim_tween.is_running():
+		meta_hud_anim_tween.kill()
+	if not animated:
+		_set_meta_hud_panel_size(target_size)
+		meta_hud_panel.scale = target_scale
+		meta_hud_panel.modulate = target_modulate
+		call_deferred("_update_meta_hud_pivot")
+		return
+	meta_hud_anim_tween = create_tween().set_parallel(true)
+	var left = -(target_size.x + META_HUD_MARGIN)
+	var top = -(target_size.y + META_HUD_MARGIN)
+	var right = -META_HUD_MARGIN
+	var bottom = -META_HUD_MARGIN
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "offset_left", left, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "offset_top", top, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "offset_right", right, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "offset_bottom", bottom, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "scale", target_scale, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.tween_property(meta_hud_panel, "modulate", target_modulate, 0.16).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	meta_hud_anim_tween.chain().tween_callback(func(): _update_meta_hud_pivot())
+
+func _set_meta_hud_panel_size(size: Vector2) -> void:
+	if meta_hud_panel == null:
+		return
+	meta_hud_panel.offset_left = -(size.x + META_HUD_MARGIN)
+	meta_hud_panel.offset_top = -(size.y + META_HUD_MARGIN)
+	meta_hud_panel.offset_right = -META_HUD_MARGIN
+	meta_hud_panel.offset_bottom = -META_HUD_MARGIN
+
+func _update_meta_hud_pivot() -> void:
+	if meta_hud_panel == null:
+		return
+	meta_hud_panel.pivot_offset = meta_hud_panel.size
+
+func _strip_hud_prefix(text: String, prefix: String) -> String:
+	if text.begins_with(prefix):
+		return text.substr(prefix.length()).strip_edges()
+	return text
+
+func _is_save_popup_visible() -> bool:
+	return save_popup_overlay != null and is_instance_valid(save_popup_overlay) and save_popup_overlay.visible
+
+func _toggle_save_popup() -> void:
+	if _is_save_popup_visible():
+		_hide_save_popup()
+	else:
+		_show_save_popup()
+
+func _ensure_save_popup() -> void:
+	if save_popup_overlay != null and is_instance_valid(save_popup_overlay):
+		return
+	save_popup_overlay = ColorRect.new()
+	save_popup_overlay.name = "SavePopupOverlay"
+	save_popup_overlay.color = Color(0, 0, 0, 0.45)
+	save_popup_overlay.anchor_left = 0.0
+	save_popup_overlay.anchor_top = 0.0
+	save_popup_overlay.anchor_right = 1.0
+	save_popup_overlay.anchor_bottom = 1.0
+	save_popup_overlay.offset_left = 0.0
+	save_popup_overlay.offset_top = 0.0
+	save_popup_overlay.offset_right = 0.0
+	save_popup_overlay.offset_bottom = 0.0
+	save_popup_overlay.visible = false
+	save_popup_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	save_popup_overlay.gui_input.connect(func(e: InputEvent):
+		if e is InputEventMouseButton and (e as InputEventMouseButton).pressed and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			_hide_save_popup()
+	)
+	add_child(save_popup_overlay)
+
+	save_popup_panel = PanelContainer.new()
+	save_popup_panel.name = "SavePopup"
+	save_popup_panel.anchor_left = 0.0
+	save_popup_panel.anchor_top = 0.0
+	save_popup_panel.anchor_right = 0.0
+	save_popup_panel.anchor_bottom = 0.0
+	save_popup_panel.offset_left = 12.0
+	save_popup_panel.offset_top = 72.0
+	save_popup_panel.offset_right = 430.0
+	save_popup_panel.offset_bottom = 210.0
+	save_popup_panel.visible = false
+	save_popup_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	save_popup_overlay.add_child(save_popup_panel)
+
+	var save_vbox = VBoxContainer.new()
+	save_popup_panel.add_child(save_vbox)
+	var row1 = HBoxContainer.new()
+	save_vbox.add_child(row1)
+	var save_label = Label.new()
+	save_label.text = "存档"
+	row1.add_child(save_label)
+	save_slot_select = OptionButton.new()
+	save_slot_select.custom_minimum_size = Vector2(260, 0)
+	save_slot_select.item_selected.connect(_on_save_slot_selected)
+	row1.add_child(save_slot_select)
+	var close_btn = Button.new()
+	close_btn.text = "关闭"
+	close_btn.pressed.connect(_hide_save_popup)
+	row1.add_child(close_btn)
+
+	save_slot_edit = LineEdit.new()
+	save_slot_edit.placeholder_text = "输入名称用于另存/重命名"
+	save_vbox.add_child(save_slot_edit)
+
+	var row2 = HBoxContainer.new()
+	save_vbox.add_child(row2)
+	save_overwrite_button = Button.new()
+	save_overwrite_button.text = "存档"
+	save_overwrite_button.pressed.connect(_on_save_overwrite_pressed)
+	row2.add_child(save_overwrite_button)
+	save_as_button = Button.new()
+	save_as_button.text = "另存"
+	save_as_button.pressed.connect(_on_save_as_pressed)
+	row2.add_child(save_as_button)
+	save_load_button = Button.new()
+	save_load_button.text = "读档"
+	save_load_button.pressed.connect(_on_save_load_pressed)
+	row2.add_child(save_load_button)
+	save_rename_button = Button.new()
+	save_rename_button.text = "重命名"
+	save_rename_button.pressed.connect(_on_save_rename_pressed)
+	row2.add_child(save_rename_button)
+	var new_run_button = Button.new()
+	new_run_button.text = "新开局"
+	new_run_button.pressed.connect(_on_new_run_pressed)
+	row2.add_child(new_run_button)
+
+	save_status_label = Label.new()
+	save_status_label.text = ""
+	save_vbox.add_child(save_status_label)
+
+func _show_save_popup() -> void:
+	_ensure_save_popup()
+	_refresh_save_ui()
+	if save_popup_tween != null and save_popup_tween.is_running():
+		save_popup_tween.kill()
+	save_popup_overlay.visible = true
+	save_popup_overlay.modulate.a = 0.0
+	save_popup_panel.visible = true
+	save_popup_panel.modulate.a = 0.0
+	save_popup_tween = create_tween().set_parallel(true)
+	save_popup_tween.tween_property(save_popup_overlay, "modulate:a", 1.0, 0.12)
+	save_popup_tween.tween_property(save_popup_panel, "modulate:a", 1.0, 0.12)
+
+func _hide_save_popup() -> void:
+	if not _is_save_popup_visible():
+		return
+	if save_popup_tween != null and save_popup_tween.is_running():
+		save_popup_tween.kill()
+	save_popup_tween = create_tween().set_parallel(true)
+	save_popup_tween.tween_property(save_popup_overlay, "modulate:a", 0.0, 0.1)
+	save_popup_tween.tween_property(save_popup_panel, "modulate:a", 0.0, 0.1)
+	save_popup_tween.chain().tween_callback(func():
+		if save_popup_overlay and is_instance_valid(save_popup_overlay):
+			save_popup_overlay.visible = false
+		if save_popup_panel and is_instance_valid(save_popup_panel):
+			save_popup_panel.visible = false
+	)
+
+func _get_level_node() -> Node:
+	return get_tree().get_first_node_in_group("level")
+
+func _refresh_save_ui() -> void:
+	var level = _get_level_node()
+	if level == null or save_slot_select == null:
+		return
+	var slots: Array = []
+	if level.has_method("list_save_slots"):
+		slots = level.call("list_save_slots")
+	var preferred = "默认存档"
+	save_slot_select.clear()
+	for s in slots:
+		save_slot_select.add_item(str(s))
+	if save_slot_select.item_count == 0:
+		save_slot_select.add_item(preferred)
+	var target_index = 0
+	for i in range(save_slot_select.item_count):
+		if save_slot_select.get_item_text(i) == preferred:
+			target_index = i
+			break
+	save_slot_select.select(target_index)
+	_on_save_slot_selected(target_index)
+
+func _on_save_slot_selected(index: int) -> void:
+	if save_slot_select == null or save_slot_edit == null:
+		return
+	save_slot_edit.text = save_slot_select.get_item_text(index)
+
+func _get_current_save_slot() -> String:
+	var level = _get_level_node()
+	if level != null and level.has_method("get_save_slot"):
+		return str(level.call("get_save_slot"))
+	return "默认存档"
+
+func _get_selected_save_slot() -> String:
+	if save_slot_select == null or save_slot_select.item_count == 0:
+		return _get_current_save_slot()
+	return save_slot_select.get_item_text(save_slot_select.selected)
+
+func _set_save_status(text: String) -> void:
+	if save_status_label:
+		save_status_label.text = text
+
+func _on_save_overwrite_pressed() -> void:
+	var level = _get_level_node()
+	if level == null:
+		return
+	var slot = _get_selected_save_slot()
+	var ok = true
+	if level.has_method("request_manual_save"):
+		ok = bool(level.call("request_manual_save", slot))
+	if ok:
+		_set_save_status("已存档: " + slot)
+		_refresh_save_ui()
+	else:
+		_set_save_status("存档失败: " + slot)
+	if save_overwrite_button == null:
+		return
+	if save_overwrite_tween != null and save_overwrite_tween.is_running():
+		save_overwrite_tween.kill()
+	save_overwrite_button.disabled = true
+	var original = save_overwrite_button.text
+	save_overwrite_button.text = "已存"
+	save_overwrite_tween = create_tween()
+	save_overwrite_tween.tween_interval(0.7)
+	save_overwrite_tween.tween_callback(func():
+		if save_overwrite_button:
+			save_overwrite_button.text = original
+			save_overwrite_button.disabled = false
+	)
+
+func _on_save_as_pressed() -> void:
+	var level = _get_level_node()
+	if level == null or save_slot_edit == null:
+		return
+	var slot = save_slot_edit.text
+	var ok = true
+	if level.has_method("request_manual_save"):
+		ok = bool(level.call("request_manual_save", slot))
+	if ok:
+		_set_save_status("已另存为: " + slot.strip_edges())
+		_refresh_save_ui()
+	else:
+		_set_save_status("另存失败: " + slot.strip_edges())
+
+func _on_save_load_pressed() -> void:
+	var level = _get_level_node()
+	if level == null:
+		return
+	var slot = _get_selected_save_slot()
+	var ok = false
+	if level.has_method("request_manual_load"):
+		ok = bool(level.call("request_manual_load", slot))
+	if ok:
+		_set_save_status("正在读档(重开本局): " + slot)
+	else:
+		_set_save_status("读档失败(不存在): " + slot)
+	if save_load_button == null:
+		return
+	if save_load_tween != null and save_load_tween.is_running():
+		save_load_tween.kill()
+	save_load_button.disabled = true
+	var original = save_load_button.text
+	save_load_button.text = "已读"
+	save_load_tween = create_tween()
+	save_load_tween.tween_interval(0.7)
+	save_load_tween.tween_callback(func():
+		if save_load_button:
+			save_load_button.text = original
+			save_load_button.disabled = false
+	)
+
+func _on_save_rename_pressed() -> void:
+	var level = _get_level_node()
+	if level == null or save_slot_edit == null:
+		return
+	var from_slot = _get_selected_save_slot()
+	var to_slot = save_slot_edit.text
+	var ok = false
+	if level.has_method("rename_save_slot"):
+		ok = bool(level.call("rename_save_slot", from_slot, to_slot))
+	if ok:
+		_set_save_status("已重命名: " + from_slot + " -> " + to_slot.strip_edges())
+		_refresh_save_ui()
+	else:
+		_set_save_status("重命名失败")
+
+func _on_new_run_pressed() -> void:
+	_hide_save_popup()
+	var level = _get_level_node()
+	if level != null and level.has_method("request_new_run"):
+		level.call("request_new_run")
+	else:
+		_restart_run()
+
+func _build_end_overlay() -> void:
+	end_overlay = ColorRect.new()
+	end_overlay.name = "EndOverlay"
+	end_overlay.color = Color(0, 0, 0, 0.72)
+	end_overlay.anchor_left = 0.0
+	end_overlay.anchor_top = 0.0
+	end_overlay.anchor_right = 1.0
+	end_overlay.anchor_bottom = 1.0
+	end_overlay.offset_left = 0.0
+	end_overlay.offset_top = 0.0
+	end_overlay.offset_right = 0.0
+	end_overlay.offset_bottom = 0.0
+	end_overlay.visible = false
+	end_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	end_overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(end_overlay)
+	var panel = PanelContainer.new()
+	panel.anchor_left = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -260.0
+	panel.offset_top = -200.0
+	panel.offset_right = 260.0
+	panel.offset_bottom = 200.0
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	end_overlay.add_child(panel)
+	var vbox = VBoxContainer.new()
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_child(vbox)
+	end_title_label = Label.new()
+	end_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	end_title_label.text = "结束"
+	vbox.add_child(end_title_label)
+	end_stats_label = Label.new()
+	end_stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	end_stats_label.text = ""
+	vbox.add_child(end_stats_label)
+	var buttons = HBoxContainer.new()
+	vbox.add_child(buttons)
+	restart_button = Button.new()
+	restart_button.text = "重开"
+	restart_button.pressed.connect(_restart_run)
+	buttons.add_child(restart_button)
+	quit_button = Button.new()
+	quit_button.text = "退出"
+	quit_button.pressed.connect(_quit_run)
+	buttons.add_child(quit_button)
+
+func _restart_run() -> void:
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+func _quit_run() -> void:
+	get_tree().paused = false
+	get_tree().quit()
+
+func _format_time(seconds: float) -> String:
+	var s = int(floor(max(0.0, seconds)))
+	var m = int(floor(float(s) / 60.0))
+	var r = s - m * 60
+	var mm = str(m).pad_zeros(2)
+	var ss = str(r).pad_zeros(2)
+	return mm + ":" + ss
 
 # --- ⚔️ 武器栏逻辑 ---
 # --- ⚔️ 武器栏高级视觉交互 ---
@@ -172,25 +830,703 @@ func update_player_health(current: int, max_value: int) -> void:
 	if player_health_bar:
 		player_health_bar.max_value = max_value
 		player_health_bar.value = current
+		var player = get_tree().get_first_node_in_group("peao")
+		if player != null:
+			var atk_val = 0
+			var def_val = 0
+			if "attack_damage" in player:
+				atk_val = int(player.get("attack_damage"))
+			if "defense" in player:
+				def_val = int(player.get("defense"))
+			player_health_bar.tooltip_text = "HP " + str(current) + "/" + str(max_value) + "\nATK " + str(atk_val) + "\nDEF " + str(def_val)
 
-func update_player_stamina(current: int, max_value: int) -> void:
-	# 更新体力条显示
-	if player_stamina_bar:
-		player_stamina_bar.max_value = max_value
-		player_stamina_bar.value = current
+func update_player_experience(current: int, to_next: int, level: int) -> void:
+	if player_exp_bar:
+		player_exp_bar.max_value = max(1, to_next)
+		player_exp_bar.value = clamp(current, 0, player_exp_bar.max_value)
+	if exp_level_label:
+		exp_level_label.text = "Lv." + str(level)
+	if exp_need_label:
+		exp_need_label.text = str(clamp(current, 0, max(0, to_next))) + "/" + str(max(0, to_next))
 
-func _sync_player_bars() -> void:
-	# 从玩家节点读取当前状态并同步 UI
+func _sync_player_health() -> void:
 	var player = get_tree().get_first_node_in_group("peao")
-	if player:
-		var max_health = player.get("max_health")
-		var current_health = player.get("current_health")
-		if max_health != null and current_health != null:
-			update_player_health(current_health, max_health)
-		var max_stamina = player.get("max_stamina")
-		var current_stamina = player.get("current_stamina")
-		if max_stamina != null and current_stamina != null:
-			update_player_stamina(current_stamina, max_stamina)
+	if player == null:
+		return
+	var max_health = player.get("max_health")
+	var current_health = player.get("current_health")
+	if max_health != null and current_health != null:
+		update_player_health(current_health, max_health)
+
+func _build_exp_progress() -> void:
+	if player_exp_bar_root == null:
+		return
+	var scale_factor = max(0.05, float(player_exp_bar_root.scale.x))
+	var exp_settings = LabelSettings.new()
+	exp_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	exp_settings.font_size = int(round(18.0 / scale_factor))
+	exp_settings.outline_size = int(round(5.0 / scale_factor))
+	exp_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
+	exp_level_label = Label.new()
+	exp_level_label.anchor_left = 0.0
+	exp_level_label.anchor_top = 0.0
+	exp_level_label.anchor_right = 0.0
+	exp_level_label.anchor_bottom = 1.0
+	exp_level_label.offset_left = 18.0
+	exp_level_label.offset_top = 0.0
+	exp_level_label.offset_right = 92.0
+	exp_level_label.offset_bottom = 0.0
+	exp_level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	exp_level_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	exp_level_label.text = "Lv.1"
+	exp_level_label.label_settings = exp_settings
+	player_exp_bar_root.add_child(exp_level_label)
+	exp_name_label = Label.new()
+	exp_name_label.anchor_left = 0.0
+	exp_name_label.anchor_top = 0.0
+	exp_name_label.anchor_right = 0.0
+	exp_name_label.anchor_bottom = 1.0
+	exp_name_label.offset_left = 112.0
+	exp_name_label.offset_top = 0.0
+	exp_name_label.offset_right = 178.0
+	exp_name_label.offset_bottom = 0.0
+	exp_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	exp_name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	exp_name_label.text = "经验"
+	exp_name_label.label_settings = exp_settings
+	player_exp_bar_root.add_child(exp_name_label)
+	exp_need_label = Label.new()
+	exp_need_label.anchor_left = 1.0
+	exp_need_label.anchor_top = 0.0
+	exp_need_label.anchor_right = 1.0
+	exp_need_label.anchor_bottom = 1.0
+	exp_need_label.offset_left = -172.0
+	exp_need_label.offset_top = 0.0
+	exp_need_label.offset_right = -18.0
+	exp_need_label.offset_bottom = 0.0
+	exp_need_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	exp_need_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	exp_need_label.text = "0/0"
+	exp_need_label.label_settings = exp_settings
+	player_exp_bar_root.add_child(exp_need_label)
+
+func _ensure_build_tooltip() -> void:
+	if build_tooltip_panel != null and is_instance_valid(build_tooltip_panel):
+		return
+	build_tooltip_panel = PanelContainer.new()
+	build_tooltip_panel.visible = false
+	build_tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	build_tooltip_panel.custom_minimum_size = Vector2(320, 0)
+	add_child(build_tooltip_panel)
+	build_tooltip_label = Label.new()
+	if wood_label != null and wood_label.label_settings != null:
+		build_tooltip_label.label_settings = wood_label.label_settings
+	build_tooltip_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	build_tooltip_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	build_tooltip_panel.add_child(build_tooltip_label)
+
+func _ensure_unit_tooltip() -> void:
+	if unit_tooltip_panel != null and is_instance_valid(unit_tooltip_panel):
+		return
+	unit_tooltip_panel = PanelContainer.new()
+	unit_tooltip_panel.visible = false
+	unit_tooltip_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	unit_tooltip_panel.custom_minimum_size = Vector2(260, 0)
+	add_child(unit_tooltip_panel)
+	unit_tooltip_label = Label.new()
+	if wood_label != null and wood_label.label_settings != null:
+		unit_tooltip_label.label_settings = wood_label.label_settings
+	unit_tooltip_label.autowrap_mode = TextServer.AUTOWRAP_OFF
+	unit_tooltip_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	unit_tooltip_panel.add_child(unit_tooltip_label)
+
+func _show_build_tooltip(button: Control, text: String) -> void:
+	_ensure_build_tooltip()
+	build_hovered_button = button
+	if build_tooltip_label != null:
+		build_tooltip_label.text = text
+	build_tooltip_panel.visible = true
+	build_tooltip_panel.reset_size()
+	_position_build_tooltip()
+
+func _hide_build_tooltip(button: Control) -> void:
+	if build_hovered_button != button:
+		return
+	build_hovered_button = null
+	if build_tooltip_panel != null:
+		build_tooltip_panel.visible = false
+
+func _position_build_tooltip() -> void:
+	if build_tooltip_panel == null or build_hovered_button == null:
+		return
+	build_tooltip_panel.reset_size()
+	var rect = build_hovered_button.get_global_rect()
+	var pos = rect.position + Vector2(rect.size.x + 8, -4)
+	var view = get_viewport().get_visible_rect().size
+	var panel_size = build_tooltip_panel.size
+	if pos.x + panel_size.x > view.x:
+		pos.x = rect.position.x - panel_size.x - 8
+	if pos.y + panel_size.y > view.y:
+		pos.y = max(8.0, view.y - panel_size.y - 8)
+	if pos.y < 0.0:
+		pos.y = 8.0
+	build_tooltip_panel.global_position = pos
+
+func _position_unit_tooltip() -> void:
+	if unit_tooltip_panel == null or unit_hovered_node == null or not is_instance_valid(unit_hovered_node):
+		return
+	var node_pos = Vector2.ZERO
+	if unit_hovered_node is Node2D:
+		var node2d := unit_hovered_node as Node2D
+		var canvas_xform = get_viewport().get_canvas_transform()
+		node_pos = canvas_xform * node2d.global_position
+	elif unit_hovered_node is Control:
+		var control := unit_hovered_node as Control
+		node_pos = control.get_global_rect().position
+	unit_tooltip_panel.reset_size()
+	var pos = node_pos + Vector2(24, -40)
+	var view = get_viewport().get_visible_rect().size
+	var panel_size = unit_tooltip_panel.size
+	if pos.x + panel_size.x > view.x:
+		pos.x = node_pos.x - panel_size.x - 12
+	if pos.y + panel_size.y > view.y:
+		pos.y = max(8.0, view.y - panel_size.y - 8)
+	if pos.y < 0.0:
+		pos.y = 8.0
+	unit_tooltip_panel.global_position = pos
+
+func show_unit_tooltip(node: Node, text: String) -> void:
+	_ensure_unit_tooltip()
+	unit_hovered_node = node
+	if unit_tooltip_label != null:
+		unit_tooltip_label.text = text
+	unit_tooltip_panel.visible = true
+	_position_unit_tooltip()
+
+func hide_unit_tooltip(node: Node) -> void:
+	if unit_hovered_node != node:
+		return
+	unit_hovered_node = null
+	if unit_tooltip_panel != null:
+		unit_tooltip_panel.visible = false
+
+func _build_build_buttons() -> void:
+	build_buttons_container = HBoxContainer.new()
+	build_buttons_container.name = "BuildButtons"
+	build_buttons_container.anchor_left = 0.5
+	build_buttons_container.anchor_top = 1.0
+	build_buttons_container.anchor_right = 0.5
+	build_buttons_container.anchor_bottom = 1.0
+	build_buttons_container.offset_left = -180.0
+	build_buttons_container.offset_right = 180.0
+	build_buttons_container.offset_top = -130.0
+	build_buttons_container.offset_bottom = -8.0
+	build_buttons_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	add_child(build_buttons_container)
+	build_warehouse_button = TextureButton.new()
+	build_warehouse_button.custom_minimum_size = Vector2(64, 64)
+	build_warehouse_button.size = Vector2(64, 64)
+	build_warehouse_button.ignore_texture_size = true
+	build_warehouse_button.stretch_mode = TextureButton.STRETCH_SCALE
+	build_warehouse_button.tooltip_text = "需要: 木0 矿0 肉0"
+	build_warehouse_button.pressed.connect(_on_build_warehouse_pressed)
+	build_warehouse_button.texture_normal = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Buildings/Blue Buildings/House3.png")
+	build_warehouse_button.set_script(preload("res://Interface/ScaleButton.gd"))
+	build_buttons_container.add_child(build_warehouse_button)
+	var click_audio = AudioStreamPlayer.new()
+	click_audio.name = "AudioStreamPlayer"
+	click_audio.stream = preload("res://Audio/click_003.ogg")
+	click_audio.volume_db = -5.0
+	build_warehouse_button.add_child(click_audio)
+	var warehouse_label = Label.new()
+	warehouse_label.name = "Label"
+	warehouse_label.anchor_top = 1.0
+	warehouse_label.anchor_bottom = 1.0
+	warehouse_label.offset_top = -66.0
+	warehouse_label.offset_right = 65.0
+	warehouse_label.theme_type_variation = &"GraphFrameTitleLabel"
+	warehouse_label.text = "仓库"
+	warehouse_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	warehouse_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	var warehouse_label_settings = LabelSettings.new()
+	warehouse_label_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	warehouse_label_settings.font_size = 18
+	warehouse_label_settings.outline_size = 5
+	warehouse_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
+	warehouse_label.label_settings = warehouse_label_settings
+	build_warehouse_button.add_child(warehouse_label)
+	build_warehouse_tooltip_text = build_warehouse_button.tooltip_text
+	build_warehouse_button.tooltip_text = ""
+	build_warehouse_button.mouse_entered.connect(func(): _show_build_tooltip(build_warehouse_button, build_warehouse_tooltip_text))
+	build_warehouse_button.mouse_exited.connect(func(): _hide_build_tooltip(build_warehouse_button))
+
+	build_castle_button = TextureButton.new()
+	build_castle_button.custom_minimum_size = Vector2(64, 64)
+	build_castle_button.size = Vector2(64, 64)
+	build_castle_button.ignore_texture_size = true
+	build_castle_button.stretch_mode = TextureButton.STRETCH_SCALE
+	build_castle_button.tooltip_text = "主城 · 仅能建造一座"
+	build_castle_button.pressed.connect(_on_build_castle_pressed)
+	build_castle_button.texture_normal = preload("res://Assets/Buildings/Castle/Castle.png")
+	build_castle_button.set_script(preload("res://Interface/ScaleButton.gd"))
+	build_buttons_container.add_child(build_castle_button)
+
+	var castle_label := Label.new()
+	castle_label.name = "Label"
+	castle_label.anchor_top = 1.0
+	castle_label.anchor_bottom = 1.0
+	castle_label.offset_top = -66.0
+	castle_label.offset_right = 65.0
+	castle_label.theme_type_variation = &"GraphFrameTitleLabel"
+	castle_label.text = "主城"
+	castle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	castle_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	var castle_label_settings := LabelSettings.new()
+	castle_label_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	castle_label_settings.font_size = 18
+	castle_label_settings.outline_size = 5
+	castle_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
+	castle_label.label_settings = castle_label_settings
+	build_castle_button.add_child(castle_label)
+	build_castle_tooltip_text = build_castle_button.tooltip_text
+	build_castle_button.tooltip_text = ""
+	build_castle_button.mouse_entered.connect(func(): _show_build_tooltip(build_castle_button, build_castle_tooltip_text))
+	build_castle_button.mouse_exited.connect(func(): _hide_build_tooltip(build_castle_button))
+
+	build_barracks_button = TextureButton.new()
+	build_barracks_button.custom_minimum_size = Vector2(64, 64)
+	build_barracks_button.size = Vector2(64, 64)
+	build_barracks_button.ignore_texture_size = true
+	build_barracks_button.stretch_mode = TextureButton.STRETCH_SCALE
+	build_barracks_button.tooltip_text = "兵营 · 消耗SP解锁兵力"
+	build_barracks_button.pressed.connect(_on_build_barracks_pressed)
+	build_barracks_button.texture_normal = preload("res://Tiny Swords/Tiny Swords (Free Pack)/Buildings/Blue Buildings/Barracks.png")
+	build_barracks_button.set_script(preload("res://Interface/ScaleButton.gd"))
+	build_buttons_container.add_child(build_barracks_button)
+
+	var barracks_label := Label.new()
+	barracks_label.name = "Label"
+	barracks_label.anchor_top = 1.0
+	barracks_label.anchor_bottom = 1.0
+	barracks_label.offset_top = -66.0
+	barracks_label.offset_right = 65.0
+	barracks_label.theme_type_variation = &"GraphFrameTitleLabel"
+	barracks_label.text = "兵营"
+	barracks_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	barracks_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	var barracks_label_settings := LabelSettings.new()
+	barracks_label_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	barracks_label_settings.font_size = 18
+	barracks_label_settings.outline_size = 5
+	barracks_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
+	barracks_label.label_settings = barracks_label_settings
+	build_barracks_button.add_child(barracks_label)
+	build_barracks_tooltip_text = build_barracks_button.tooltip_text
+	build_barracks_button.tooltip_text = ""
+	build_barracks_button.mouse_entered.connect(func(): _show_build_tooltip(build_barracks_button, build_barracks_tooltip_text))
+	build_barracks_button.mouse_exited.connect(func(): _hide_build_tooltip(build_barracks_button))
+
+	build_tower_button = TextureButton.new()
+	build_tower_button.custom_minimum_size = Vector2(64, 64)
+	build_tower_button.size = Vector2(64, 64)
+	build_tower_button.ignore_texture_size = true
+	build_tower_button.stretch_mode = TextureButton.STRETCH_SCALE
+	build_tower_button.tooltip_text = "箭塔 · 消耗资源放置"
+	build_tower_button.pressed.connect(_on_build_tower_pressed)
+	build_tower_button.texture_normal = preload("res://Assets/Buildings/Tower/Tower.png")
+	build_tower_button.set_script(preload("res://Interface/ScaleButton.gd"))
+	build_buttons_container.add_child(build_tower_button)
+
+	var tower_label := Label.new()
+	tower_label.name = "Label"
+	tower_label.anchor_top = 1.0
+	tower_label.anchor_bottom = 1.0
+	tower_label.offset_top = -66.0
+	tower_label.offset_right = 65.0
+	tower_label.theme_type_variation = &"GraphFrameTitleLabel"
+	tower_label.text = "箭塔"
+	tower_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tower_label.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	var tower_label_settings := LabelSettings.new()
+	tower_label_settings.font = preload("res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf")
+	tower_label_settings.font_size = 18
+	tower_label_settings.outline_size = 5
+	tower_label_settings.outline_color = Color(0.08627451, 0.10980392, 0.18039216, 1)
+	tower_label.label_settings = tower_label_settings
+	build_tower_button.add_child(tower_label)
+	build_tower_tooltip_text = build_tower_button.tooltip_text
+	build_tower_button.tooltip_text = ""
+	build_tower_button.mouse_entered.connect(func(): _show_build_tooltip(build_tower_button, build_tower_tooltip_text))
+	build_tower_button.mouse_exited.connect(func(): _hide_build_tooltip(build_tower_button))
+
+func _on_build_warehouse_pressed() -> void:
+	get_tree().call_group("level", "request_build_warehouse")
+
+func _on_build_castle_pressed() -> void:
+	get_tree().call_group("level", "request_build_castle")
+
+func _on_build_barracks_pressed() -> void:
+	get_tree().call_group("level", "request_build_barracks")
+
+func _on_build_tower_pressed() -> void:
+	get_tree().call_group("level", "request_build_tower")
+
+func _build_barracks_panel() -> void:
+	if barracks_panel != null:
+		return
+	barracks_panel = PanelContainer.new()
+	barracks_panel.name = "BarracksPanel"
+	barracks_panel.visible = false
+	add_child(barracks_panel)
+	barracks_panel.anchor_left = 0.5
+	barracks_panel.anchor_top = 0.5
+	barracks_panel.anchor_right = 0.5
+	barracks_panel.anchor_bottom = 0.5
+	barracks_panel.offset_left = -384.0
+	barracks_panel.offset_right = 384.0
+	barracks_panel.offset_top = -216.0
+	barracks_panel.offset_bottom = 216.0
+	var bg = TextureRect.new()
+	bg.name = "Background"
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.anchor_left = 0.0
+	bg.anchor_top = 0.0
+	bg.anchor_right = 1.0
+	bg.anchor_bottom = 1.0
+	bg.offset_left = 0.0
+	bg.offset_top = 0.0
+	bg.offset_right = 0.0
+	bg.offset_bottom = 0.0
+	var bg_texture: Texture2D = null
+	if ResourceLoader.exists("res://Assets/UI/TechGridBackground.png"):
+		bg_texture = load("res://Assets/UI/TechGridBackground.png") as Texture2D
+	bg.texture = bg_texture
+	barracks_panel.add_child(bg)
+	var vbox = VBoxContainer.new()
+	vbox.anchor_left = 0.0
+	vbox.anchor_top = 0.0
+	vbox.anchor_right = 1.0
+	vbox.anchor_bottom = 1.0
+	vbox.offset_left = 16.0
+	vbox.offset_top = 16.0
+	vbox.offset_right = -16.0
+	vbox.offset_bottom = -16.0
+	barracks_panel.add_child(vbox)
+	var title = Label.new()
+	title.text = "选择兵种"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(title)
+	var cost_label = Label.new()
+	cost_label.text = "首次免费"
+	cost_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vbox.add_child(cost_label)
+	barracks_cost_label = cost_label
+	var hbox = HBoxContainer.new()
+	hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 48)
+	vbox.add_child(hbox)
+	barracks_unit_buttons.clear()
+	var warrior_button = TextureButton.new()
+	warrior_button.tooltip_text = "战士"
+	warrior_button.custom_minimum_size = Vector2(160, 160)
+	warrior_button.ignore_texture_size = true
+	warrior_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	warrior_button.texture_normal = _build_unit_icon("res://Assets/Units/Blue/Warrior/Warrior_Idle.png", 6)
+	warrior_button.pressed.connect(func(): _on_barracks_unit_button_pressed("warrior"))
+	hbox.add_child(warrior_button)
+	barracks_unit_buttons["warrior"] = warrior_button
+	var lancer_button = TextureButton.new()
+	lancer_button.tooltip_text = "枪兵"
+	lancer_button.custom_minimum_size = Vector2(160, 160)
+	lancer_button.ignore_texture_size = true
+	lancer_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	lancer_button.texture_normal = _build_unit_icon("res://Assets/Units/Blue/Lancer/Lancer_Idle.png", 6)
+	lancer_button.pressed.connect(func(): _on_barracks_unit_button_pressed("lancer"))
+	hbox.add_child(lancer_button)
+	barracks_unit_buttons["lancer"] = lancer_button
+	var monk_button = TextureButton.new()
+	monk_button.tooltip_text = "僧侣"
+	monk_button.custom_minimum_size = Vector2(160, 160)
+	monk_button.ignore_texture_size = true
+	monk_button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	monk_button.texture_normal = _build_unit_icon("res://Assets/Units/Blue/Monk/Idle.png", 6)
+	monk_button.pressed.connect(func(): _on_barracks_unit_button_pressed("monk"))
+	hbox.add_child(monk_button)
+	barracks_unit_buttons["monk"] = monk_button
+	var buttons_row = HBoxContainer.new()
+	buttons_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	buttons_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_child(buttons_row)
+	var confirm_button = Button.new()
+	confirm_button.text = "确定"
+	confirm_button.pressed.connect(_on_barracks_confirm_pressed)
+	buttons_row.add_child(confirm_button)
+	barracks_confirm_button = confirm_button
+	var cancel_button = Button.new()
+	cancel_button.text = "取消"
+	cancel_button.pressed.connect(_on_barracks_cancel_pressed)
+	buttons_row.add_child(cancel_button)
+	barracks_selected_type = "warrior"
+	_update_barracks_selection_visuals()
+
+	if barracks_action_panel == null:
+		barracks_action_panel = PanelContainer.new()
+		barracks_action_panel.name = "BarracksActionPanel"
+		barracks_action_panel.visible = false
+		add_child(barracks_action_panel)
+		barracks_action_panel.anchor_left = 0.5
+		barracks_action_panel.anchor_top = 0.5
+		barracks_action_panel.anchor_right = 0.5
+		barracks_action_panel.anchor_bottom = 0.5
+		barracks_action_panel.offset_left = -120.0
+		barracks_action_panel.offset_right = 120.0
+		barracks_action_panel.offset_top = -80.0
+		barracks_action_panel.offset_bottom = 80.0
+		var action_vbox = VBoxContainer.new()
+		action_vbox.anchor_left = 0.0
+		action_vbox.anchor_top = 0.0
+		action_vbox.anchor_right = 1.0
+		action_vbox.anchor_bottom = 1.0
+		action_vbox.offset_left = 12.0
+		action_vbox.offset_top = 12.0
+		action_vbox.offset_right = -12.0
+		action_vbox.offset_bottom = -12.0
+		barracks_action_panel.add_child(action_vbox)
+		var title_label = Label.new()
+		title_label.text = "兵营操作"
+		title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		action_vbox.add_child(title_label)
+		var add_unit_button = Button.new()
+		add_unit_button.text = "添加兵种"
+		add_unit_button.pressed.connect(_on_barracks_action_add_unit_pressed)
+		action_vbox.add_child(add_unit_button)
+		var move_button = Button.new()
+		move_button.text = "移动位置"
+		move_button.pressed.connect(_on_barracks_action_move_pressed)
+		action_vbox.add_child(move_button)
+
+func _build_unit_icon(texture_path: String, frames: int) -> Texture2D:
+	var tex: Texture2D = load(texture_path)
+	if tex == null:
+		return null
+	var derived_frames := 0
+	if tex.get_height() > 0:
+		derived_frames = int(round(tex.get_width() / float(tex.get_height())))
+	if derived_frames <= 0:
+		derived_frames = max(frames, 1)
+	var frame_width = tex.get_width() / float(derived_frames)
+	var region = Rect2(0, 0, frame_width, tex.get_height())
+	var atlas = AtlasTexture.new()
+	atlas.atlas = tex
+	atlas.region = region
+	return atlas
+
+func open_barracks_unit_select() -> void:
+	if barracks_panel == null:
+		_build_barracks_panel()
+	barracks_selected_type = "warrior"
+	_update_barracks_selection_visuals()
+	_refresh_barracks_unit_tooltips()
+	barracks_panel.visible = true
+
+func open_barracks_action_menu(barracks: Node2D) -> void:
+	if barracks_action_panel == null:
+		_build_barracks_panel()
+	selected_barracks = barracks
+	barracks_action_panel.visible = true
+
+func close_barracks_action_menu() -> void:
+	if barracks_action_panel == null:
+		return
+	barracks_action_panel.visible = false
+
+func close_barracks_unit_select() -> void:
+	if barracks_panel == null:
+		return
+	barracks_panel.visible = false
+
+func update_barracks_unit_select_cost(cost_sp: int, missing_sp: int, unit_index: int) -> void:
+	barracks_unit_cost_sp = max(0, cost_sp)
+	barracks_unit_missing_sp = max(0, missing_sp)
+	barracks_unit_index = max(1, unit_index)
+	if barracks_cost_label != null:
+		if barracks_unit_cost_sp <= 0:
+			barracks_cost_label.text = "首次免费"
+			barracks_cost_label.modulate = Color(0.9, 1.0, 0.9, 1.0)
+		else:
+			var missing_text = ""
+			if barracks_unit_missing_sp > 0:
+				missing_text = "  缺少 SP" + str(barracks_unit_missing_sp)
+			barracks_cost_label.text = "第" + str(barracks_unit_index) + "名 消耗: SP" + str(barracks_unit_cost_sp) + missing_text
+			barracks_cost_label.modulate = Color(1.0, 0.85, 0.85, 1.0) if barracks_unit_missing_sp > 0 else Color(1, 1, 1, 1)
+	if barracks_confirm_button != null:
+		barracks_confirm_button.disabled = barracks_unit_missing_sp > 0
+	_refresh_barracks_unit_tooltips()
+
+func _refresh_barracks_unit_tooltips() -> void:
+	for key in barracks_unit_buttons.keys():
+		var btn = barracks_unit_buttons[key]
+		if btn == null:
+			continue
+		var unit_name = "兵种"
+		if String(key) == "warrior":
+			unit_name = "战士"
+		elif String(key) == "lancer":
+			unit_name = "枪兵"
+		elif String(key) == "monk":
+			unit_name = "僧侣"
+		if barracks_unit_cost_sp <= 0:
+			btn.tooltip_text = unit_name + "\n首次免费"
+		else:
+			var missing_line = ""
+			if barracks_unit_missing_sp > 0:
+				missing_line = "\n缺少 SP" + str(barracks_unit_missing_sp)
+			btn.tooltip_text = unit_name + "\n第" + str(barracks_unit_index) + "名 消耗: SP" + str(barracks_unit_cost_sp) + missing_line
+
+func _on_barracks_unit_button_pressed(unit_type: String) -> void:
+	barracks_selected_type = unit_type
+	_update_barracks_selection_visuals()
+
+func _update_barracks_selection_visuals() -> void:
+	for key in barracks_unit_buttons.keys():
+		var btn = barracks_unit_buttons[key]
+		if btn == null:
+			continue
+		if String(key) == barracks_selected_type:
+			btn.modulate = Color(1, 1, 1, 1)
+			btn.scale = Vector2(1.1, 1.1)
+		else:
+			btn.modulate = Color(0.7, 0.7, 0.7, 0.8)
+			btn.scale = Vector2(1, 1)
+
+func _on_barracks_confirm_pressed() -> void:
+	if barracks_selected_type == "":
+		barracks_selected_type = "warrior"
+	get_tree().call_group("level", "request_spawn_barracks_unit", barracks_selected_type)
+	close_barracks_unit_select()
+
+func _on_barracks_action_add_unit_pressed() -> void:
+	close_barracks_action_menu()
+	if selected_barracks != null and is_instance_valid(selected_barracks):
+		get_tree().call_group("level", "request_open_barracks_unit_select_at", selected_barracks)
+
+func _on_barracks_action_move_pressed() -> void:
+	close_barracks_action_menu()
+	if selected_barracks != null and is_instance_valid(selected_barracks):
+		get_tree().call_group("level", "request_move_barracks", selected_barracks)
+
+func _on_barracks_cancel_pressed() -> void:
+	get_tree().call_group("level", "cancel_barracks_unit_selection")
+	close_barracks_unit_select()
+
+func update_warehouse_build_button_state(can_build: bool, cost_wood: int, cost_gold: int, cost_meat: int, cost_sp: int, missing_wood: int, missing_gold: int, missing_meat: int, missing_sp: int, placing: bool) -> void:
+	if build_warehouse_button == null:
+		return
+	var missing_text = "缺少: 木" + str(missing_wood) + " 矿" + str(missing_gold) + " 肉" + str(missing_meat) + " SP" + str(missing_sp)
+	var cost_text = "成本: 木" + str(cost_wood) + " 矿" + str(cost_gold) + " 肉" + str(cost_meat) + " SP" + str(cost_sp)
+	if placing:
+		build_warehouse_tooltip_text = "左键放置，右键取消\n" + cost_text
+	else:
+		build_warehouse_tooltip_text = cost_text + "\n" + missing_text
+	if build_hovered_button == build_warehouse_button:
+		_show_build_tooltip(build_warehouse_button, build_warehouse_tooltip_text)
+	build_warehouse_button.disabled = (not placing) and (not can_build)
+	if placing:
+		build_warehouse_button.modulate = Color(0.9, 1.0, 0.9, 1.0)
+	elif can_build:
+		build_warehouse_button.modulate = Color(1, 1, 1, 1)
+	else:
+		build_warehouse_button.modulate = Color(0.55, 0.55, 0.55, 0.9)
+
+func update_castle_build_button_state(can_build: bool, placing: bool) -> void:
+	if build_castle_button == null:
+		return
+	var text = "主城 · 仅能建造一座"
+	if placing:
+		build_castle_tooltip_text = "左键放置，右键取消\n" + text
+	else:
+		build_castle_tooltip_text = text
+	if build_hovered_button == build_castle_button:
+		_show_build_tooltip(build_castle_button, build_castle_tooltip_text)
+	build_castle_button.disabled = (not placing) and (not can_build)
+	if placing:
+		build_castle_button.modulate = Color(0.9, 1.0, 0.9, 1.0)
+	elif can_build:
+		build_castle_button.modulate = Color(1, 1, 1, 1)
+	else:
+		build_castle_button.modulate = Color(0.55, 0.55, 0.55, 0.9)
+
+func update_barracks_build_button_state(can_build: bool, cost_sp: int, missing_sp: int, placing: bool, reached_max: bool) -> void:
+	if build_barracks_button == null:
+		return
+	var missing_text = "缺少 SP" + str(missing_sp)
+	var cost_text = "成本: SP" + str(cost_sp)
+	if reached_max:
+		build_barracks_tooltip_text = "兵营数量已达上限"
+	elif placing:
+		build_barracks_tooltip_text = "左键放置，右键取消\n" + cost_text
+	else:
+		build_barracks_tooltip_text = cost_text + "\n" + missing_text
+	if build_hovered_button == build_barracks_button:
+		_show_build_tooltip(build_barracks_button, build_barracks_tooltip_text)
+	build_barracks_button.disabled = (not placing) and ((not can_build) or reached_max)
+	if placing:
+		build_barracks_button.modulate = Color(0.9, 1.0, 0.9, 1.0)
+	elif can_build and not reached_max:
+		build_barracks_button.modulate = Color(1, 1, 1, 1)
+	else:
+		build_barracks_button.modulate = Color(0.55, 0.55, 0.55, 0.9)
+
+func update_tower_build_button_state(can_build: bool, cost_wood: int, cost_gold: int, cost_meat: int, cost_sp: int, missing_wood: int, missing_gold: int, missing_meat: int, missing_sp: int, placing: bool, reached_max: bool) -> void:
+	if build_tower_button == null:
+		return
+	var missing_text = "缺少: 木" + str(missing_wood) + " 矿" + str(missing_gold) + " 肉" + str(missing_meat) + " SP" + str(missing_sp)
+	var cost_text = "成本: 木" + str(cost_wood) + " 矿" + str(cost_gold) + " 肉" + str(cost_meat) + " SP" + str(cost_sp)
+	if reached_max:
+		build_tower_tooltip_text = "箭塔数量已达上限"
+	elif placing:
+		build_tower_tooltip_text = "左键放置，右键取消\n" + cost_text
+	else:
+		build_tower_tooltip_text = cost_text + "\n" + missing_text
+	if build_hovered_button == build_tower_button:
+		_show_build_tooltip(build_tower_button, build_tower_tooltip_text)
+	build_tower_button.disabled = (not placing) and ((not can_build) or reached_max)
+	if placing:
+		build_tower_button.modulate = Color(0.9, 1.0, 0.9, 1.0)
+	elif can_build and not reached_max:
+		build_tower_button.modulate = Color(1, 1, 1, 1)
+	else:
+		build_tower_button.modulate = Color(0.55, 0.55, 0.55, 0.9)
+
+func _auto_fill_quickbar_from_inventory() -> void:
+	var available: Array[String] = []
+	for key in inventory_data.keys():
+		var count = int(inventory_data.get(key, 0))
+		if count > 0:
+			available.append(String(key))
+	var preferred: Array[String] = ["wood", "gold", "meat"]
+	var ordered: Array[String] = []
+	for p in preferred:
+		if p in available:
+			ordered.append(p)
+			available.erase(p)
+	available.sort()
+	for k in available:
+		ordered.append(k)
+	var remaining: Array[String] = ordered.duplicate()
+	for i in range(quickbar_items.size()):
+		var t = quickbar_items[i]
+		if t != "" and t in remaining:
+			remaining.erase(t)
+		else:
+			quickbar_items[i] = ""
+	for i in range(quickbar_items.size()):
+		if quickbar_items[i] == "" and not remaining.is_empty():
+			quickbar_items[i] = remaining.pop_front()
 
 func _refresh_quickbar_ui() -> void:
 	# 刷新快捷栏显示
@@ -225,6 +1561,12 @@ func use_quick_slot(index: int) -> void:
 	if index < 0 or index >= quickbar_items.size():
 		return
 	var item_type = quickbar_items[index]
+	if item_type == "redwood_seed":
+		get_tree().call_group("level", "request_plant_redwood_seed")
+		return
+	if item_type == "lamb":
+		get_tree().call_group("level", "request_release_lamb")
+		return
 	if item_type == "meat":
 		var ok = _consume_meat("quick_slot")
 		if ok:
@@ -236,6 +1578,23 @@ func use_quick_slot(index: int) -> void:
 func _get_player() -> Node:
 	# 获取玩家节点（使用分组查询）
 	return get_tree().get_first_node_in_group("peao")
+
+func _recenter_camera_on_player() -> void:
+	var player = _get_player() as Node2D
+	if player == null:
+		return
+	var camera = player.get_node_or_null("GameCamera") as Camera2D
+	if camera == null:
+		return
+	if camera_recenter_tween != null and camera_recenter_tween.is_running():
+		camera_recenter_tween.kill()
+	if camera.has_method("reset_smoothing"):
+		camera.reset_smoothing()
+	var target = Vector2.ZERO
+	var start = camera.position
+	var duration = clamp(start.distance_to(target) / 900.0, 0.22, 0.55)
+	camera_recenter_tween = create_tween()
+	camera_recenter_tween.tween_property(camera, "position", target, duration).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _consume_meat(source: String) -> bool:
 	# 吃肉回血，并更新 UI 与库存
@@ -330,6 +1689,13 @@ func _on_bag_button_pressed() -> void:
 	else:
 		_consume_meat("open_inventory")
 		_open_inventory_animation()
+
+func _on_save_button_pressed() -> void:
+	_toggle_save_popup()
+
+func _on_tech_button_pressed() -> void:
+	if tech_ui != null and is_instance_valid(tech_ui) and tech_ui.has_method("toggle"):
+		tech_ui.call("toggle")
 
 func _open_inventory_animation():
 	# 打开背包的弹出动画

@@ -13,6 +13,13 @@
 [ext_resource type="PackedScene" uid="uid://cwrhw06guqefk" path="res://Interface/InventorySlot.tscn" id="7_o153u"]
 [ext_resource type="Texture2D" uid="uid://c4umkg3tindvx" path="res://Interface/Icons/Tool_04.png" id="7_vaal7"]
 [ext_resource type="PackedScene" path="res://Base_Object/Enemies/Archer/Archer.tscn" id="8_archer"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/RedWarrior.tscn" id="8_red_warrior"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/RedLancer.tscn" id="9_red_lancer"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/RedArcher.tscn" id="9_red_archer"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/RedMonk.tscn" id="9_red_monk"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/BlueWarrior.tscn" id="8_blue_warrior"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/BlueLancer.tscn" id="9_blue_lancer"]
+[ext_resource type="PackedScene" path="res://Base_Object/Units/BlueMonk.tscn" id="9_blue_monk"]
 [ext_resource type="PackedScene" uid="uid://cf1p5y0j3g35a" path="res://Base_Object/Animals/Sheep/Sheep.tscn" id="8_sheep"]
 [ext_resource type="PackedScene" uid="uid://bitcn8g41e8s2" path="res://Terrain/Terrain.tscn" id="9_jwu1v"]
 [ext_resource type="FontFile" uid="uid://ckt0umhc75sre" path="res://Fonts/ark-pixel-10px-monospaced-zh_cn.ttf" id="10_8ua86"]
@@ -25,7 +32,10 @@
 [ext_resource type="Script" uid="uid://c2y6hlp18831o" path="res://Interface/ScaleButton.gd" id="14_f381r"]
 [ext_resource type="AudioStream" uid="uid://cgr4uasp7rpn3" path="res://Audio/click_003.ogg" id="15_gweiw"]
 [ext_resource type="Script" uid="uid://xeqineioqg2a" path="res://Interface/tile_map_layer.gd" id="15_xswsh"]
+[ext_resource type="Texture2D" uid="uid://chk5uj0tqnsvo" path="res://Tiny Swords/Tiny Swords (Free Pack)/UI Elements/UI Elements/Icons/Icon_10.png" id="16_save_icon"]
+[ext_resource type="Texture2D" uid="uid://bnkr6hhibim3o" path="res://Tiny Swords/Tiny Swords (Free Pack)/UI Elements/UI Elements/Icons/Icon_05.png" id="16_skill_icon"]
 [ext_resource type="PackedScene" uid="uid://cd78fxl4a4n33" path="res://Base_Object/PhysicItem.tscn" id="20_ll4ok"]
+[ext_resource type="PackedScene" uid="uid://c76j5j3jyd8qu" path="res://Interface/SkillTreeUI.tscn" id="21_skill_tree_ui"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_gweiw"]
 font = ExtResource("10_8ua86")
@@ -71,6 +81,13 @@ script = ExtResource("1_vaal7")
 object_scenes = Array[PackedScene]([ExtResource("2_vaal7"), ExtResource("3_7a7m0")])
 sheep_scene = ExtResource("8_sheep")
 archer_scene = ExtResource("8_archer")
+enemy_warrior_scene = ExtResource("8_red_warrior")
+enemy_lancer_scene = ExtResource("9_red_lancer")
+enemy_archer_scene = ExtResource("9_red_archer")
+enemy_monk_scene = ExtResource("9_red_monk")
+ally_warrior_scene = ExtResource("8_blue_warrior")
+ally_lancer_scene = ExtResource("9_blue_lancer")
+ally_monk_scene = ExtResource("9_blue_monk")
 
 [node name="Terrain" parent="." unique_id=94221036 instance=ExtResource("9_jwu1v")]
 
@@ -416,37 +433,83 @@ text = "4"
 label_settings = SubResource("LabelSettings_gweiw")
 horizontal_alignment = 1
 
-[node name="BagButton" type="TextureButton" parent="Interface" unique_id=1942792526]
-anchors_preset = 2
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_top = -64.0
-offset_right = 64.0
+[node name="TopBar" type="HBoxContainer" parent="Interface" unique_id=505015193]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -211.0
+offset_top = 37.0
+offset_right = 1.0
+offset_bottom = 101.0
+grow_horizontal = 0
+theme_override_constants/separation = 10
+
+[node name="SaveButton" type="TextureButton" parent="Interface/TopBar" unique_id=2114000001]
+visible = false
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture_normal = ExtResource("16_save_icon")
+script = ExtResource("14_f381r")
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="Interface/TopBar/SaveButton" unique_id=2114000002]
+stream = ExtResource("15_gweiw")
+volume_db = -5.0
+
+[node name="Label" type="Label" parent="Interface/TopBar/SaveButton" unique_id=2114000003]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 66.0
+offset_bottom = 90.0
+grow_horizontal = 2
 grow_vertical = 0
+theme_type_variation = &"GraphFrameTitleLabel"
+text = "存档"
+label_settings = SubResource("LabelSettings_gweiw")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ShortcutLabel" type="Label" parent="Interface/TopBar/SaveButton" unique_id=2114000004]
+layout_mode = 1
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 30.0
+offset_bottom = 18.0
+theme_type_variation = &"GraphFrameTitleLabel"
+text = "F5"
+label_settings = SubResource("LabelSettings_gweiw")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BagButton" type="TextureButton" parent="Interface/TopBar" unique_id=1942792526]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
 size_flags_horizontal = 4
 size_flags_vertical = 4
 texture_normal = ExtResource("13_eba0h")
 script = ExtResource("14_f381r")
 
-[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="Interface/BagButton" unique_id=1963289332]
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="Interface/TopBar/BagButton" unique_id=1963289332]
 stream = ExtResource("15_gweiw")
 volume_db = -5.0
 
-[node name="Label" type="Label" parent="Interface/BagButton" unique_id=949924675]
+[node name="Label" type="Label" parent="Interface/TopBar/BagButton" unique_id=949924675]
 layout_mode = 1
-anchors_preset = 2
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_top = -66.0
-offset_right = 65.0
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 66.0
+offset_bottom = 90.0
+grow_horizontal = 2
 grow_vertical = 0
 theme_type_variation = &"GraphFrameTitleLabel"
 text = "储物箱"
 label_settings = SubResource("LabelSettings_gweiw")
 horizontal_alignment = 1
-vertical_alignment = 2
+vertical_alignment = 1
 
-[node name="ShortcutLabel" type="Label" parent="Interface/BagButton" unique_id=2113456789]
+[node name="ShortcutLabel" type="Label" parent="Interface/TopBar/BagButton" unique_id=2113456789]
 layout_mode = 1
 offset_left = 2.0
 offset_top = 2.0
@@ -458,14 +521,55 @@ label_settings = SubResource("LabelSettings_gweiw")
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="SkillButton" type="TextureButton" parent="Interface/TopBar" unique_id=1891400210]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+texture_normal = ExtResource("16_skill_icon")
+script = ExtResource("14_f381r")
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="Interface/TopBar/SkillButton" unique_id=1891400211]
+stream = ExtResource("15_gweiw")
+volume_db = -5.0
+
+[node name="Label" type="Label" parent="Interface/TopBar/SkillButton" unique_id=1891400212]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 66.0
+offset_bottom = 90.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_type_variation = &"GraphFrameTitleLabel"
+text = "科技"
+label_settings = SubResource("LabelSettings_gweiw")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ShortcutLabel" type="Label" parent="Interface/TopBar/SkillButton" unique_id=1891400213]
+layout_mode = 1
+offset_left = 2.0
+offset_top = 2.0
+offset_right = 18.0
+offset_bottom = 18.0
+theme_type_variation = &"GraphFrameTitleLabel"
+text = "T"
+label_settings = SubResource("LabelSettings_gweiw")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SkillTreeUI" parent="Interface" unique_id=380165154 instance=ExtResource("21_skill_tree_ui")]
+layout_mode = 3
+
 [node name="QuickBar" type="HBoxContainer" parent="Interface" unique_id=2113774042]
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 78.0
-offset_top = -60.0
-offset_right = 864.0
-offset_bottom = 132.0
+offset_left = 31.0
+offset_top = -86.0
+offset_right = 1015.0
+offset_bottom = 106.0
 grow_vertical = 0
 scale = Vector2(0.3, 0.3)
 theme_override_constants/separation = 6
@@ -483,6 +587,10 @@ custom_minimum_size = Vector2(72, 72)
 layout_mode = 2
 
 [node name="QuickSlot4" parent="Interface/QuickBar" unique_id=2113774046 instance=ExtResource("7_o153u")]
+custom_minimum_size = Vector2(72, 72)
+layout_mode = 2
+
+[node name="QuickSlot5" parent="Interface/QuickBar" unique_id=2113774047 instance=ExtResource("7_o153u")]
 custom_minimum_size = Vector2(72, 72)
 layout_mode = 2
 
@@ -516,6 +624,8 @@ position = Vector2(84, 161)
 item_type = "gold"
 is_static_spawn = true
 
-[connection signal="pressed" from="Interface/BagButton" to="Interface" method="_on_bag_button_pressed"]
+[connection signal="pressed" from="Interface/TopBar/SaveButton" to="Interface" method="_on_save_button_pressed"]
+[connection signal="pressed" from="Interface/TopBar/BagButton" to="Interface" method="_on_bag_button_pressed"]
+[connection signal="pressed" from="Interface/TopBar/SkillButton" to="Interface" method="_on_tech_button_pressed"]
 
 [editable path="Terrain"]

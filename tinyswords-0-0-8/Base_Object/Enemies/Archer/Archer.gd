@@ -10,6 +10,7 @@ extends CharacterBody2D
 @export var shoot_anim_time: float = 0.4
 @export var arrow_speed: float = 260.0
 @export var damage: int = 1
+@export var defense: int = 0
 @export var idle_texture: Texture2D
 @export var move_texture: Texture2D
 @export var shoot_texture: Texture2D
@@ -41,6 +42,7 @@ var roam_layer: TileMapLayer
 var roam_cells: Array[Vector2i] = []
 var home_cell: Vector2i
 var hit_tween: Tween
+var is_hovered: bool = false
 var hit_fx_defs: Array[Dictionary] = [
 	{"texture": preload("res://Assets/FX/Particles/Explosion_01.png"), "frames": 8},
 	{"texture": preload("res://Assets/FX/Particles/Explosion_02.png"), "frames": 10}
@@ -51,7 +53,17 @@ func _ready() -> void:
 	# 初始化敌人，加入敌人分组并设置血量
 	add_to_group("enemy")
 	current_health = max_health
+	input_pickable = true
+	if not mouse_entered.is_connected(_on_mouse_entered):
+		mouse_entered.connect(_on_mouse_entered)
+	if not mouse_exited.is_connected(_on_mouse_exited):
+		mouse_exited.connect(_on_mouse_exited)
 	_update_health_bar()
+	if health_bar:
+		health_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var parent_control = health_bar.get_parent() as Control
+		if parent_control:
+			parent_control.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	home_position = global_position
 	_build_animations()
 	_enter_idle()
@@ -95,7 +107,8 @@ func _physics_process(delta: float) -> void:
 
 func take_damage(amount: int) -> void:
 	# 受击后扣血并播放闪烁效果
-	current_health = max(current_health - amount, 0)
+	var final_damage = max(0, amount - defense)
+	current_health = max(current_health - final_damage, 0)
 	_update_health_bar()
 	if anim:
 		if hit_tween and hit_tween.is_running():
@@ -110,6 +123,7 @@ func take_damage(amount: int) -> void:
 		_spawn_hit_fx()
 	print("Archer受击 | 伤害=", amount, " | HP=", current_health, "/", max_health)
 	if current_health <= 0:
+		get_tree().call_group("level", "register_enemy_kill", "archer")
 		queue_free()
 
 func _spawn_hit_fx() -> void:
@@ -194,10 +208,15 @@ func _add_strip(frames: SpriteFrames, anim_name: String, texture: Texture2D, fra
 	# 将一张横向帧贴图切成动画
 	if texture == null:
 		return
+	var derived_frames = int(round(texture.get_width() / float(texture.get_height())))
+	if derived_frames <= 0:
+		derived_frames = frame_count
+	if derived_frames <= 0:
+		return
 	frames.add_animation(anim_name)
-	var frame_width = texture.get_width() / float(frame_count)
+	var frame_width = texture.get_width() / float(derived_frames)
 	var frame_height = texture.get_height()
-	for i in range(frame_count):
+	for i in range(derived_frames):
 		var region = Rect2(i * frame_width, 0, frame_width, frame_height)
 		var frame_tex = AtlasTexture.new()
 		frame_tex.atlas = texture
@@ -210,6 +229,28 @@ func _update_health_bar() -> void:
 	if health_bar:
 		health_bar.max_value = max_health
 		health_bar.value = current_health
+		health_bar.tooltip_text = ""
+	_refresh_hover_tooltip()
+
+func _get_hover_tooltip_text() -> String:
+	return "生命 " + str(current_health) + "/" + str(max_health) + "\n攻击 " + str(damage) + "\n防御 " + str(defense)
+
+func _refresh_hover_tooltip() -> void:
+	if not is_hovered:
+		return
+	var ui = get_tree().get_first_node_in_group("interface")
+	if ui != null and ui.has_method("show_unit_tooltip"):
+		ui.call("show_unit_tooltip", self, _get_hover_tooltip_text())
+
+func _on_mouse_entered() -> void:
+	is_hovered = true
+	_refresh_hover_tooltip()
+
+func _on_mouse_exited() -> void:
+	is_hovered = false
+	var ui = get_tree().get_first_node_in_group("interface")
+	if ui != null and ui.has_method("hide_unit_tooltip"):
+		ui.call("hide_unit_tooltip", self)
 
 func _enter_idle() -> void:
 	# 进入待机状态
